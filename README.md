@@ -2,6 +2,14 @@
 
 A Qt UI application for viewing Logos modules.
 
+## Usage
+
+```bash
+./logos-module-viewer --module ./path/to/module.dylib
+```
+
+This will load the specified Qt plugin module and display its methods in the UI.
+
 ## How to Build
 
 ### Using Nix (Recommended)
