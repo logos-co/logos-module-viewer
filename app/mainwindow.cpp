@@ -26,6 +26,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QDateTime>
+#include <QSplitter>
 #include <iostream>
 
 #include "logos_api.h"
@@ -169,7 +170,6 @@ void MainWindow::setupUi()
         "}"
     );
     m_eventLog->setPlaceholderText("Event log will appear here...");
-    layout->addWidget(m_eventLog);
 
     m_methodsTree = new QTreeWidget(this);
     m_methodsTree->setHeaderLabels({"Name", "Type", "Return Type", "Parameters"});
@@ -209,7 +209,23 @@ void MainWindow::setupUi()
         "  border-right: none;"
         "}"
     );
-    layout->addWidget(m_methodsTree);
+
+    QSplitter* splitter = new QSplitter(Qt::Vertical, this);
+    splitter->addWidget(m_eventLog);
+    splitter->addWidget(m_methodsTree);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 2);
+    splitter->setSizes({200, 600});
+    splitter->setStyleSheet(
+        "QSplitter::handle {"
+        "  background-color: #3d3d3d;"
+        "  height: 4px;"
+        "}"
+        "QSplitter::handle:hover {"
+        "  background-color: #5a9;"
+        "}"
+    );
+    layout->addWidget(splitter);
 
     setCentralWidget(centralWidget);
 }
