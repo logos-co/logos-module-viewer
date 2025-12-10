@@ -88,6 +88,22 @@ void MainWindow::setupUi()
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
 
+    m_headerLabel = new QLabel("No module loaded", this);
+    m_headerLabel->setWordWrap(true);
+    m_headerLabel->setStyleSheet(
+        "QLabel {"
+        "  font-family: -apple-system, 'Segoe UI', sans-serif;"
+        "  font-size: 14px;"
+        "  color: #b0b0b0;"
+        "  padding: 12px 16px;"
+        "  background-color: #2d2d2d;"
+        "  border: 1px solid #3d3d3d;"
+        "  border-radius: 8px;"
+        "  line-height: 1.5;"
+        "}"
+    );
+    layout->addWidget(m_headerLabel);
+
     QLabel* eventLabel = new QLabel("Event Subscription", this);
     eventLabel->setStyleSheet(
         "QLabel {"
@@ -154,22 +170,6 @@ void MainWindow::setupUi()
     );
     m_eventLog->setPlaceholderText("Event log will appear here...");
     layout->addWidget(m_eventLog);
-
-    m_headerLabel = new QLabel("No module loaded", this);
-    m_headerLabel->setWordWrap(true);
-    m_headerLabel->setStyleSheet(
-        "QLabel {"
-        "  font-family: -apple-system, 'Segoe UI', sans-serif;"
-        "  font-size: 14px;"
-        "  color: #b0b0b0;"
-        "  padding: 12px 16px;"
-        "  background-color: #2d2d2d;"
-        "  border: 1px solid #3d3d3d;"
-        "  border-radius: 8px;"
-        "  line-height: 1.5;"
-        "}"
-    );
-    layout->addWidget(m_headerLabel);
 
     m_methodsTree = new QTreeWidget(this);
     m_methodsTree->setHeaderLabels({"Name", "Type", "Return Type", "Parameters"});
