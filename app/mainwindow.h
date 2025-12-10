@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QString>
 #include <QMap>
+#include <QVariant>
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -12,6 +13,8 @@ class QPluginLoader;
 class QWidget;
 class QMetaMethod;
 class LogosAPI;
+class QLineEdit;
+class QTextEdit;
 
 class MainWindow : public QMainWindow
 {
@@ -25,11 +28,13 @@ public:
 
 private slots:
     void onCallMethod();
+    void onSubscribeEvent();
 
 private:
     void setupUi();
     QWidget* createMethodForm(const QMetaMethod& method, int methodIndex);
     void invokeMethod(int methodIndex, QWidget* formWidget);
+    void appendEventToLog(const QString& eventName, const QVariantList& data);
 
     QString m_modulePath;
     QString m_currentModuleName;
@@ -40,6 +45,9 @@ private:
     QMap<QTreeWidgetItem*, int> m_itemToMethodIndex;
     bool m_coreInitialized;
     LogosAPI* m_logosAPI;
+    QLineEdit* m_eventNameInput;
+    QTextEdit* m_eventLog;
+    QMap<QString, QObject*> m_eventSubscriptions;
 };
 
 #endif // MAINWINDOW_H

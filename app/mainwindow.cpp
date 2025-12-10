@@ -21,6 +21,11 @@
 #include <QCheckBox>
 #include <QPushButton>
 #include <QFrame>
+#include <QTextEdit>
+#include <QTextCursor>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QDateTime>
 #include <iostream>
 
 #include "logos_api.h"
@@ -43,6 +48,8 @@ MainWindow::MainWindow(const QString& modulePath, QWidget *parent)
     , m_pluginInstance(nullptr)
     , m_coreInitialized(false)
     , m_logosAPI(nullptr)
+    , m_eventNameInput(nullptr)
+    , m_eventLog(nullptr)
 {
     setupUi();
 
@@ -80,6 +87,73 @@ void MainWindow::setupUi()
     QVBoxLayout* layout = new QVBoxLayout(centralWidget);
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
+
+    QLabel* eventLabel = new QLabel("Event Subscription", this);
+    eventLabel->setStyleSheet(
+        "QLabel {"
+        "  font-family: -apple-system, 'Segoe UI', sans-serif;"
+        "  font-size: 14px;"
+        "  font-weight: 600;"
+        "  color: #e0e0e0;"
+        "}"
+    );
+    layout->addWidget(eventLabel);
+
+    QHBoxLayout* eventInputLayout = new QHBoxLayout();
+    eventInputLayout->setSpacing(8);
+
+    m_eventNameInput = new QLineEdit(this);
+    m_eventNameInput->setPlaceholderText("Enter event name to subscribe...");
+    m_eventNameInput->setStyleSheet(
+        "QLineEdit {"
+        "  padding: 8px 12px;"
+        "  border: 1px solid #4d4d4d;"
+        "  border-radius: 4px;"
+        "  background: #1e1e1e;"
+        "  color: #e0e0e0;"
+        "  font-size: 13px;"
+        "}"
+        "QLineEdit:focus {"
+        "  border: 1px solid #5a9;"
+        "}"
+    );
+    eventInputLayout->addWidget(m_eventNameInput);
+
+    QPushButton* subscribeButton = new QPushButton("Subscribe", this);
+    subscribeButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #5a9;"
+        "  color: #ffffff;"
+        "  border: none;"
+        "  padding: 8px 16px;"
+        "  border-radius: 4px;"
+        "  font-weight: 600;"
+        "  min-width: 100px;"
+        "}"
+        "QPushButton:hover { background-color: #6bb; }"
+        "QPushButton:pressed { background-color: #499; }"
+    );
+    connect(subscribeButton, &QPushButton::clicked, this, &MainWindow::onSubscribeEvent);
+    eventInputLayout->addWidget(subscribeButton);
+
+    layout->addLayout(eventInputLayout);
+
+    m_eventLog = new QTextEdit(this);
+    m_eventLog->setReadOnly(true);
+    m_eventLog->setMinimumHeight(150);
+    m_eventLog->setStyleSheet(
+        "QTextEdit {"
+        "  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;"
+        "  font-size: 12px;"
+        "  border: 1px solid #4d4d4d;"
+        "  border-radius: 4px;"
+        "  background-color: #1e1e1e;"
+        "  color: #e0e0e0;"
+        "  padding: 8px;"
+        "}"
+    );
+    m_eventLog->setPlaceholderText("Event log will appear here...");
+    layout->addWidget(m_eventLog);
 
     m_headerLabel = new QLabel("No module loaded", this);
     m_headerLabel->setWordWrap(true);
@@ -472,10 +546,84 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
     }
 }
 
+void MainWindow::onSubscribeEvent()
+{
+    if (!m_eventNameInput) {
+        return;
+    }
+
+    QString eventName = m_eventNameInput->text().trimmed();
+    if (eventName.isEmpty()) {
+        appendEventToLog("Error", QVariantList() << "Event name cannot be empty");
+        return;
+    }
+
+    if (m_eventSubscriptions.contains(eventName)) {
+        appendEventToLog("Warning", QVariantList() << QString("Already subscribed to event: %1").arg(eventName));
+        return;
+    }
+
+    if (m_currentModuleName.isEmpty() || !m_logosAPI) {
+        appendEventToLog("Error", QVariantList() << "No module loaded or LogosAPI not initialized");
+        return;
+    }
+
+    LogosAPIClient* client = m_logosAPI->getClient(m_currentModuleName);
+    if (!client) {
+        appendEventToLog("Error", QVariantList() << QString("Failed to get API client for module: %1").arg(m_currentModuleName));
+        return;
+    }
+
+    QObject* replica = client->requestObject(m_currentModuleName);
+    if (!replica) {
+        appendEventToLog("Error", QVariantList() << QString("Failed to get replica object for module: %1").arg(m_currentModuleName));
+        return;
+    }
+
+    client->onEvent(replica, nullptr, eventName, [this](const QString& name, const QVariantList& data) {
+        appendEventToLog(name, data);
+    });
+
+    m_eventSubscriptions[eventName] = replica;
+    appendEventToLog("Info", QVariantList() << QString("Subscribed to event: %1").arg(eventName));
+    m_eventNameInput->clear();
+}
+
+void MainWindow::appendEventToLog(const QString& eventName, const QVariantList& data)
+{
+    if (!m_eventLog) {
+        return;
+    }
+
+    QJsonObject eventObj;
+    eventObj["event"] = eventName;
+    eventObj["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    QJsonArray dataArray;
+    for (const QVariant& v : data) {
+        dataArray.append(QJsonValue::fromVariant(v));
+    }
+    eventObj["data"] = dataArray;
+
+    QJsonDocument doc(eventObj);
+    QString jsonString = doc.toJson(QJsonDocument::Indented);
+
+    m_eventLog->append(jsonString);
+    
+    QTextCursor cursor = m_eventLog->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    m_eventLog->setTextCursor(cursor);
+}
+
 void MainWindow::loadModule(const QString& path)
 {
     m_methodsTree->clear();
     m_itemToMethodIndex.clear();
+
+    m_eventSubscriptions.clear();
+    if (m_eventLog) {
+        m_eventLog->clear();
+    }
 
     if (m_pluginLoader) {
         m_pluginLoader->unload();
