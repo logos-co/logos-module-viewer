@@ -11,6 +11,7 @@ class QLabel;
 class QPluginLoader;
 class QWidget;
 class QMetaMethod;
+class LogosAPI;
 
 class MainWindow : public QMainWindow
 {
@@ -31,12 +32,14 @@ private:
     void invokeMethod(int methodIndex, QWidget* formWidget);
 
     QString m_modulePath;
+    QString m_currentModuleName;
     QLabel* m_headerLabel;
     QTreeWidget* m_methodsTree;
     QPluginLoader* m_pluginLoader;
     QObject* m_pluginInstance;
     QMap<QTreeWidgetItem*, int> m_itemToMethodIndex;
+    bool m_coreInitialized;
+    LogosAPI* m_logosAPI;
 };
 
 #endif // MAINWINDOW_H
-

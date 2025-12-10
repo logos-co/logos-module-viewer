@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, logosLiblogos, logosSdk }:
 
 {
   pname = "logos-module-viewer";
@@ -12,16 +12,19 @@
   ];
   
   buildInputs = [ 
-    pkgs.qt6.qtbase 
+    pkgs.qt6.qtbase
+    pkgs.qt6.qtremoteobjects
   ];
   
   cmakeFlags = [ 
     "-GNinja"
   ];
   
+  logosLiblogos = logosLiblogos;
+  logosSdk = logosSdk;
+  
   meta = with pkgs.lib; {
     description = "Logos Module Viewer - A Qt UI application for viewing Logos modules";
     platforms = platforms.unix;
   };
 }
-

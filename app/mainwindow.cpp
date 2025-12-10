@@ -10,6 +10,8 @@
 #include <QMetaObject>
 #include <QMetaMethod>
 #include <QFileInfo>
+#include <QDir>
+#include <QCoreApplication>
 #include <QJsonObject>
 #include <QFont>
 #include <QStringList>
@@ -19,6 +21,18 @@
 #include <QCheckBox>
 #include <QPushButton>
 #include <QFrame>
+#include <iostream>
+
+#include "logos_api.h"
+#include "logos_api_client.h"
+
+extern "C" {
+    void logos_core_set_plugins_dir(const char* plugins_dir);
+    void logos_core_start();
+    void logos_core_cleanup();
+    char* logos_core_process_plugin(const char* plugin_path);
+    int logos_core_load_plugin(const char* plugin_name);
+}
 
 MainWindow::MainWindow(const QString& modulePath, QWidget *parent)
     : QMainWindow(parent)
@@ -27,6 +41,8 @@ MainWindow::MainWindow(const QString& modulePath, QWidget *parent)
     , m_methodsTree(nullptr)
     , m_pluginLoader(nullptr)
     , m_pluginInstance(nullptr)
+    , m_coreInitialized(false)
+    , m_logosAPI(nullptr)
 {
     setupUi();
 
@@ -40,6 +56,12 @@ MainWindow::~MainWindow()
     if (m_pluginLoader) {
         m_pluginLoader->unload();
         delete m_pluginLoader;
+    }
+    if (m_logosAPI) {
+        delete m_logosAPI;
+    }
+    if (m_coreInitialized) {
+        logos_core_cleanup();
     }
 }
 
@@ -254,7 +276,13 @@ void MainWindow::onCallMethod()
 
 void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
 {
-    if (!m_pluginInstance) return;
+    if (!m_pluginInstance || !m_logosAPI) {
+        QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel");
+        if (resultLabel) {
+            resultLabel->setText("<span style='color: #dc3545;'><b>Error:</b> LogosAPI not initialized</span>");
+        }
+        return;
+    }
 
     const QMetaObject* metaObject = m_pluginInstance->metaObject();
     QMetaMethod method = metaObject->method(methodIndex);
@@ -262,14 +290,7 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
     QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel");
     if (!resultLabel) return;
 
-    // Collect parameter values with their types
-    QList<int> intArgs;
-    QList<double> doubleArgs;
-    QList<float> floatArgs;
-    QList<bool> boolArgs;
-    QList<QString> stringArgs;
-    QStringList paramTypes;
-
+    QVariantList args;
     for (int p = 0; p < method.parameterCount(); ++p) {
         QString paramType = QString::fromUtf8(method.parameterTypeName(p));
         QString normalizedType = paramType;
@@ -277,140 +298,64 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
         normalizedType.remove("&");
         normalizedType.remove("*");
         normalizedType = normalizedType.trimmed();
-        paramTypes.append(normalizedType);
 
         QWidget* inputWidget = formWidget->findChild<QWidget*>(QString("param_%1").arg(p));
 
         if (normalizedType == "int") {
             QSpinBox* spin = qobject_cast<QSpinBox*>(inputWidget);
-            intArgs.append(spin ? spin->value() : 0);
+            args.append(spin ? spin->value() : 0);
         } else if (normalizedType == "double") {
             QDoubleSpinBox* spin = qobject_cast<QDoubleSpinBox*>(inputWidget);
-            doubleArgs.append(spin ? spin->value() : 0.0);
+            args.append(spin ? spin->value() : 0.0);
         } else if (normalizedType == "float") {
             QDoubleSpinBox* spin = qobject_cast<QDoubleSpinBox*>(inputWidget);
-            floatArgs.append(spin ? static_cast<float>(spin->value()) : 0.0f);
+            args.append(spin ? static_cast<float>(spin->value()) : 0.0f);
         } else if (normalizedType == "bool") {
             QCheckBox* check = qobject_cast<QCheckBox*>(inputWidget);
-            boolArgs.append(check ? check->isChecked() : false);
+            args.append(check ? check->isChecked() : false);
         } else {
             QLineEdit* edit = qobject_cast<QLineEdit*>(inputWidget);
-            stringArgs.append(edit ? edit->text() : QString());
+            args.append(edit ? edit->text() : QString());
         }
     }
 
+    QString methodName = QString::fromUtf8(method.name());
+    
+    resultLabel->setText("<i style='color: #6c757d;'>Calling remote method...</i>");
+    QCoreApplication::processEvents();
+
+    std::cout << "Invoking remote method: " << m_currentModuleName.toStdString() 
+              << "." << methodName.toStdString() << " with " << args.size() << " args" << std::endl;
+    
+    LogosAPIClient* client = m_logosAPI->getClient(m_currentModuleName);
+    if (!client) {
+        resultLabel->setText("<span style='color: #dc3545;'><b>Error:</b> Failed to get API client</span>");
+        return;
+    }
+
+    QVariant result = client->invokeRemoteMethod(m_currentModuleName, methodName, args);
+    
     QString returnType = QString::fromUtf8(method.typeName());
     QString normalizedReturn = returnType;
     normalizedReturn.remove("const ");
     normalizedReturn.remove("&");
     normalizedReturn.remove("*");
     normalizedReturn = normalizedReturn.trimmed();
-    
-    bool success = false;
-    QVariant returnValue;
-    QString methodName = QString::fromUtf8(method.name());
 
-    // Handle based on parameter count and types
-    int paramCount = method.parameterCount();
-    
-    if (paramCount == 0) {
-        if (normalizedReturn.isEmpty() || normalizedReturn == "void") {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection);
-        } else if (normalizedReturn == "bool") {
-            bool ret = false;
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_RETURN_ARG(bool, ret));
-            returnValue = ret;
-        } else if (normalizedReturn == "int") {
-            int ret = 0;
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_RETURN_ARG(int, ret));
-            returnValue = ret;
-        } else if (normalizedReturn == "QString") {
-            QString ret;
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_RETURN_ARG(QString, ret));
-            returnValue = ret;
-        } else if (normalizedReturn == "QStringList") {
-            QStringList ret;
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_RETURN_ARG(QStringList, ret));
-            returnValue = QVariant::fromValue(ret);
-        } else {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection);
-        }
-    } else if (paramCount == 1) {
-        QString t0 = paramTypes[0];
-        if (t0 == "QString") {
-            if (normalizedReturn.isEmpty() || normalizedReturn == "void") {
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_ARG(QString, stringArgs[0]));
-            } else if (normalizedReturn == "bool") {
-                bool ret = false;
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_RETURN_ARG(bool, ret), Q_ARG(QString, stringArgs[0]));
-                returnValue = ret;
-            } else if (normalizedReturn == "QString") {
-                QString ret;
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_RETURN_ARG(QString, ret), Q_ARG(QString, stringArgs[0]));
-                returnValue = ret;
-            } else {
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_ARG(QString, stringArgs[0]));
-            }
-        } else if (t0 == "int") {
-            if (normalizedReturn.isEmpty() || normalizedReturn == "void") {
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_ARG(int, intArgs[0]));
-            } else if (normalizedReturn == "bool") {
-                bool ret = false;
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_RETURN_ARG(bool, ret), Q_ARG(int, intArgs[0]));
-                returnValue = ret;
-            } else {
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_ARG(int, intArgs[0]));
-            }
-        } else if (t0 == "bool") {
-            if (normalizedReturn.isEmpty() || normalizedReturn == "void") {
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_ARG(bool, boolArgs[0]));
-            } else {
-                success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_ARG(bool, boolArgs[0]));
-            }
-        } else if (t0 == "double") {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, Q_ARG(double, doubleArgs[0]));
-        }
-    } else if (paramCount == 2) {
-        QString t0 = paramTypes[0];
-        QString t1 = paramTypes[1];
-        if (t0 == "QString" && t1 == "QString") {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection, 
-                Q_ARG(QString, stringArgs[0]), Q_ARG(QString, stringArgs[1]));
-        } else if (t0 == "QString" && t1 == "int") {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection,
-                Q_ARG(QString, stringArgs[0]), Q_ARG(int, intArgs[0]));
-        } else if (t0 == "int" && t1 == "QString") {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection,
-                Q_ARG(int, intArgs[0]), Q_ARG(QString, stringArgs[0]));
-        } else if (t0 == "int" && t1 == "int") {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection,
-                Q_ARG(int, intArgs[0]), Q_ARG(int, intArgs[1]));
-        }
-    } else if (paramCount == 3) {
-        QString t0 = paramTypes[0];
-        QString t1 = paramTypes[1];
-        QString t2 = paramTypes[2];
-        if (t0 == "QString" && t1 == "QString" && t2 == "QString") {
-            success = QMetaObject::invokeMethod(m_pluginInstance, methodName.toUtf8().constData(), Qt::DirectConnection,
-                Q_ARG(QString, stringArgs[0]), Q_ARG(QString, stringArgs[1]), Q_ARG(QString, stringArgs[2]));
-        }
-    }
-
-    if (success) {
-        if (normalizedReturn.isEmpty() || normalizedReturn == "void") {
-            resultLabel->setText("<span style='color: #27ae60;'>Method called successfully (void return)</span>");
-        } else {
-            QString resultText = returnValue.toString();
-            if (resultText.isEmpty() && returnValue.canConvert<QStringList>()) {
-                resultText = returnValue.toStringList().join(", ");
-            }
-            if (resultText.isEmpty()) {
-                resultText = QString("(%1)").arg(returnValue.typeName());
-            }
-            resultLabel->setText(QString("<span style='color: #27ae60;'><b>Success:</b></span> %1").arg(resultText.toHtmlEscaped()));
-        }
+    if (normalizedReturn.isEmpty() || normalizedReturn == "void") {
+        resultLabel->setText("<span style='color: #27ae60;'>Method called successfully (void return)</span>");
     } else {
-        resultLabel->setText("<span style='color: #dc3545;'><b>Error:</b> Method invocation failed. Check parameter types.</span>");
+        QString resultText = result.toString();
+        if (resultText.isEmpty() && result.canConvert<QStringList>()) {
+            resultText = result.toStringList().join(", ");
+        }
+        if (resultText.isEmpty() && result.isValid()) {
+            resultText = QString("(%1)").arg(result.typeName());
+        }
+        if (resultText.isEmpty()) {
+            resultText = "(empty or null result)";
+        }
+        resultLabel->setText(QString("<span style='color: #27ae60;'><b>Result:</b></span> %1").arg(resultText.toHtmlEscaped()));
     }
 }
 
@@ -447,6 +392,41 @@ void MainWindow::loadModule(const QString& path)
     QString resolvedPath = fileInfo.canonicalFilePath();
     if (resolvedPath.isEmpty()) {
         resolvedPath = fileInfo.absoluteFilePath();
+    }
+
+    if (!m_coreInitialized) {
+        QString modulesDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../modules");
+        std::cout << "Setting modules directory to: " << modulesDir.toStdString() << std::endl;
+        logos_core_set_plugins_dir(modulesDir.toUtf8().constData());
+        logos_core_start();
+        std::cout << "Logos Core started" << std::endl;
+        m_coreInitialized = true;
+
+        m_logosAPI = new LogosAPI("module_viewer", this);
+        std::cout << "LogosAPI initialized" << std::endl;
+    }
+
+    // Extract module name from file name (e.g., "package_manager_plugin.dylib" -> "package_manager")
+    QString baseName = fileInfo.baseName();
+    if (baseName.endsWith("_plugin")) {
+        baseName.chop(7); // Remove "_plugin" suffix
+    }
+    m_currentModuleName = baseName;
+    std::cout << "Module name: " << m_currentModuleName.toStdString() << std::endl;
+
+    std::cout << "Processing plugin: " << resolvedPath.toStdString() << std::endl;
+    char* pluginName = logos_core_process_plugin(resolvedPath.toUtf8().constData());
+    if (pluginName) {
+        std::cout << "Plugin processed, name: " << pluginName << std::endl;
+        bool loaded = logos_core_load_plugin(pluginName);
+        if (loaded) {
+            std::cout << "Plugin loaded successfully via Logos Core" << std::endl;
+        } else {
+            std::cout << "Warning: Failed to load plugin via Logos Core" << std::endl;
+        }
+        free(pluginName);
+    } else {
+        std::cout << "Warning: Failed to process plugin via Logos Core" << std::endl;
     }
 
     m_pluginLoader = new QPluginLoader(resolvedPath, this);
@@ -486,6 +466,7 @@ void MainWindow::loadModule(const QString& path)
         headerText += QString(" <span style='color: #6c757d; font-size: 13px;'>v%1</span>").arg(moduleVersion);
     }
     headerText += QString("<br><span style='color: #868e96; font-size: 12px;'>%1</span>").arg(resolvedPath);
+    headerText += QString("<br><span style='color: #3498db; font-size: 11px;'>Remote module: %1</span>").arg(m_currentModuleName);
     m_headerLabel->setText(headerText);
     m_headerLabel->setStyleSheet(
         "QLabel {"
@@ -502,12 +483,10 @@ void MainWindow::loadModule(const QString& path)
     for (int i = 0; i < metaObject->methodCount(); ++i) {
         QMetaMethod method = metaObject->method(i);
 
-        // Skip methods inherited from QObject base class
         if (method.enclosingMetaObject() != metaObject) {
             continue;
         }
 
-        // Skip signals - they can't be invoked directly
         if (method.methodType() == QMetaMethod::Signal) {
             continue;
         }
