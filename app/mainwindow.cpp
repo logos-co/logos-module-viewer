@@ -71,6 +71,12 @@ void MainWindow::setupUi()
     resize(1000, 800);
 
     QWidget* centralWidget = new QWidget(this);
+    centralWidget->setStyleSheet(
+        "QWidget {"
+        "  background-color: #1e1e1e;"
+        "  color: #e0e0e0;"
+        "}"
+    );
     QVBoxLayout* layout = new QVBoxLayout(centralWidget);
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
@@ -81,10 +87,10 @@ void MainWindow::setupUi()
         "QLabel {"
         "  font-family: -apple-system, 'Segoe UI', sans-serif;"
         "  font-size: 14px;"
-        "  color: #495057;"
+        "  color: #b0b0b0;"
         "  padding: 12px 16px;"
-        "  background-color: #f8f9fa;"
-        "  border: 1px solid #e9ecef;"
+        "  background-color: #2d2d2d;"
+        "  border: 1px solid #3d3d3d;"
         "  border-radius: 8px;"
         "  line-height: 1.5;"
         "}"
@@ -102,27 +108,28 @@ void MainWindow::setupUi()
         "QTreeWidget {"
         "  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;"
         "  font-size: 13px;"
-        "  border: 1px solid #ddd;"
+        "  border: 1px solid #3d3d3d;"
         "  border-radius: 6px;"
-        "  background-color: #ffffff;"
-        "  alternate-background-color: #f8f9fa;"
+        "  background-color: #252525;"
+        "  alternate-background-color: #2a2a2a;"
+        "  color: #e0e0e0;"
         "}"
         "QTreeWidget::item {"
         "  padding: 6px 8px;"
-        "  color: #1a1a2e;"
+        "  color: #e0e0e0;"
         "}"
         "QTreeWidget::item:selected {"
-        "  background-color: #e3f2fd;"
-        "  color: #1565c0;"
+        "  background-color: #3a5a7a;"
+        "  color: #ffffff;"
         "}"
         "QHeaderView::section {"
-        "  background-color: #2d3436;"
-        "  color: #ffffff;"
+        "  background-color: #1a1a1a;"
+        "  color: #e0e0e0;"
         "  padding: 10px 8px;"
         "  font-weight: 600;"
         "  font-size: 12px;"
         "  border: none;"
-        "  border-right: 1px solid #636e72;"
+        "  border-right: 1px solid #3d3d3d;"
         "}"
         "QHeaderView::section:last {"
         "  border-right: none;"
@@ -136,7 +143,8 @@ void MainWindow::setupUi()
 QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex)
 {
     QWidget* formContainer = new QWidget();
-    formContainer->setStyleSheet("background-color: #f8f9fa; border-radius: 4px;");
+    formContainer->setObjectName("methodFormContainer");
+    formContainer->setStyleSheet("background-color: #2a2a2a; border-radius: 4px;");
     
     QVBoxLayout* mainLayout = new QVBoxLayout(formContainer);
     mainLayout->setContentsMargins(12, 12, 12, 12);
@@ -192,22 +200,41 @@ QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex
         inputWidget->setStyleSheet(
             "QLineEdit, QSpinBox, QDoubleSpinBox {"
             "  padding: 6px 8px;"
-            "  border: 1px solid #ced4da;"
+            "  border: 1px solid #4d4d4d;"
             "  border-radius: 4px;"
-            "  background: white;"
-            "  color: #1a1a2e;"
+            "  background: #1e1e1e;"
+            "  color: #e0e0e0;"
             "  min-width: 200px;"
             "}"
-            "QCheckBox { padding: 4px; color: #1a1a2e; }"
+            "QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {"
+            "  border: 1px solid #5a9;"
+            "}"
+            "QCheckBox {"
+            "  padding: 4px;"
+            "  color: #e0e0e0;"
+            "}"
+            "QCheckBox::indicator {"
+            "  width: 18px;"
+            "  height: 18px;"
+            "  border: 1px solid #4d4d4d;"
+            "  border-radius: 3px;"
+            "  background: #1e1e1e;"
+            "}"
+            "QCheckBox::indicator:checked {"
+            "  background: #5a9;"
+            "  border: 1px solid #5a9;"
+            "}"
         );
 
-        QString labelText = QString("<b>%1</b> <span style='color: #6c757d;'>(%2)</span>").arg(paramName, paramType);
+        QString labelText = QString("<b style='color: #e0e0e0;'>%1</b> <span style='color: #888;'>(%2)</span>").arg(paramName, paramType);
         QLabel* label = new QLabel(labelText);
+        label->setStyleSheet("color: #e0e0e0;");
         formLayout->addRow(label, inputWidget);
     }
 
     if (method.parameterCount() == 0) {
-        QLabel* noParams = new QLabel("<i style='color: #6c757d;'>No parameters</i>");
+        QLabel* noParams = new QLabel("<i style='color: #888;'>No parameters</i>");
+        noParams->setStyleSheet("color: #888;");
         formLayout->addRow(noParams);
     }
 
@@ -221,15 +248,15 @@ QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex
     callButton->setProperty("methodIndex", methodIndex);
     callButton->setStyleSheet(
         "QPushButton {"
-        "  background-color: #27ae60;"
-        "  color: white;"
+        "  background-color: #5a9;"
+        "  color: #ffffff;"
         "  border: none;"
         "  padding: 8px 16px;"
         "  border-radius: 4px;"
         "  font-weight: 600;"
         "}"
-        "QPushButton:hover { background-color: #219a52; }"
-        "QPushButton:pressed { background-color: #1e8449; }"
+        "QPushButton:hover { background-color: #6bb; }"
+        "QPushButton:pressed { background-color: #499; }"
     );
     connect(callButton, &QPushButton::clicked, this, &MainWindow::onCallMethod);
 
@@ -239,24 +266,37 @@ QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex
 
     QFrame* resultFrame = new QFrame();
     resultFrame->setObjectName("resultFrame");
+    resultFrame->setMinimumHeight(100);
     resultFrame->setStyleSheet(
         "QFrame {"
-        "  background-color: #ffffff;"
-        "  border: 1px solid #dee2e6;"
+        "  background-color: #1e1e1e;"
+        "  border: 1px solid #4d4d4d;"
         "  border-radius: 4px;"
-        "  padding: 8px;"
+        "  padding: 12px;"
         "}"
     );
     QVBoxLayout* resultLayout = new QVBoxLayout(resultFrame);
-    resultLayout->setContentsMargins(8, 8, 8, 8);
+    resultLayout->setContentsMargins(12, 12, 12, 12);
+    resultLayout->setSpacing(8);
 
-    QLabel* resultTitle = new QLabel("<b>Result:</b>");
+    QLabel* resultTitle = new QLabel("<b style='color: #e0e0e0;'>Result:</b>");
+    resultTitle->setStyleSheet("color: #e0e0e0;");
     resultLayout->addWidget(resultTitle);
 
-    QLabel* resultLabel = new QLabel("<i style='color: #6c757d;'>Not called yet</i>");
+    QLabel* resultLabel = new QLabel("<i style='color: #888;'>Not called yet</i>");
     resultLabel->setObjectName("resultLabel");
     resultLabel->setWordWrap(true);
     resultLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    resultLabel->setMinimumHeight(60);
+    resultLabel->setStyleSheet(
+        "QLabel {"
+        "  padding: 8px;"
+        "  background-color: #252525;"
+        "  border-radius: 4px;"
+        "  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;"
+        "  font-size: 12px;"
+        "}"
+    );
     resultLayout->addWidget(resultLabel);
 
     mainLayout->addWidget(resultFrame);
@@ -270,16 +310,28 @@ void MainWindow::onCallMethod()
     if (!button) return;
 
     int methodIndex = button->property("methodIndex").toInt();
-    QWidget* formWidget = button->parentWidget()->parentWidget();
+    
+    // Find the form container by traversing up the widget hierarchy
+    QWidget* formWidget = button->parentWidget();
+    while (formWidget && formWidget->objectName() != "methodFormContainer") {
+        formWidget = formWidget->parentWidget();
+    }
+    
+    if (!formWidget) {
+        std::cout << "Error: Could not find form container widget" << std::endl;
+        return;
+    }
+    
     invokeMethod(methodIndex, formWidget);
 }
 
 void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
 {
     if (!m_pluginInstance || !m_logosAPI) {
-        QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel");
+        QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel", Qt::FindChildrenRecursively);
         if (resultLabel) {
-            resultLabel->setText("<span style='color: #dc3545;'><b>Error:</b> LogosAPI not initialized</span>");
+            resultLabel->setText("<span style='color: #ff6b6b;'><b>Error:</b> LogosAPI not initialized</span>");
+            resultLabel->update();
         }
         return;
     }
@@ -287,8 +339,19 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
     const QMetaObject* metaObject = m_pluginInstance->metaObject();
     QMetaMethod method = metaObject->method(methodIndex);
 
-    QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel");
-    if (!resultLabel) return;
+    QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel", Qt::FindChildrenRecursively);
+    if (!resultLabel) {
+        std::cout << "Error: Could not find resultLabel widget in formWidget: " << formWidget << std::endl;
+        std::cout << "Form widget objectName: " << formWidget->objectName().toStdString() << std::endl;
+        QList<QLabel*> allLabels = formWidget->findChildren<QLabel*>(Qt::FindChildrenRecursively);
+        std::cout << "Found " << allLabels.size() << " labels in form widget" << std::endl;
+        for (QLabel* label : allLabels) {
+            std::cout << "  Label objectName: " << label->objectName().toStdString() << std::endl;
+        }
+        return;
+    }
+    
+    std::cout << "Found resultLabel: " << resultLabel << ", text: " << resultLabel->text().toStdString() << std::endl;
 
     QVariantList args;
     for (int p = 0; p < method.parameterCount(); ++p) {
@@ -299,29 +362,70 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
         normalizedType.remove("*");
         normalizedType = normalizedType.trimmed();
 
-        QWidget* inputWidget = formWidget->findChild<QWidget*>(QString("param_%1").arg(p));
+        QString widgetName = QString("param_%1").arg(p);
+        QWidget* inputWidget = formWidget->findChild<QWidget*>(widgetName, Qt::FindChildrenRecursively);
+
+        if (!inputWidget) {
+            std::cout << "Warning: Could not find widget " << widgetName.toStdString() << " for parameter " << p << std::endl;
+            QList<QWidget*> allWidgets = formWidget->findChildren<QWidget*>(Qt::FindChildrenRecursively);
+            std::cout << "Available widgets: ";
+            for (QWidget* w : allWidgets) {
+                if (!w->objectName().isEmpty()) {
+                    std::cout << w->objectName().toStdString() << " ";
+                }
+            }
+            std::cout << std::endl;
+        } else {
+            std::cout << "Found widget " << widgetName.toStdString() << ": " << inputWidget << std::endl;
+        }
 
         if (normalizedType == "int") {
             QSpinBox* spin = qobject_cast<QSpinBox*>(inputWidget);
-            args.append(spin ? spin->value() : 0);
+            if (spin) {
+                args.append(spin->value());
+                std::cout << "Parameter " << p << " (int): " << spin->value() << std::endl;
+            } else {
+                args.append(0);
+            }
         } else if (normalizedType == "double") {
             QDoubleSpinBox* spin = qobject_cast<QDoubleSpinBox*>(inputWidget);
-            args.append(spin ? spin->value() : 0.0);
+            if (spin) {
+                args.append(spin->value());
+                std::cout << "Parameter " << p << " (double): " << spin->value() << std::endl;
+            } else {
+                args.append(0.0);
+            }
         } else if (normalizedType == "float") {
             QDoubleSpinBox* spin = qobject_cast<QDoubleSpinBox*>(inputWidget);
-            args.append(spin ? static_cast<float>(spin->value()) : 0.0f);
+            if (spin) {
+                args.append(static_cast<float>(spin->value()));
+                std::cout << "Parameter " << p << " (float): " << spin->value() << std::endl;
+            } else {
+                args.append(0.0f);
+            }
         } else if (normalizedType == "bool") {
             QCheckBox* check = qobject_cast<QCheckBox*>(inputWidget);
-            args.append(check ? check->isChecked() : false);
+            if (check) {
+                args.append(check->isChecked());
+                std::cout << "Parameter " << p << " (bool): " << (check->isChecked() ? "true" : "false") << std::endl;
+            } else {
+                args.append(false);
+            }
         } else {
             QLineEdit* edit = qobject_cast<QLineEdit*>(inputWidget);
-            args.append(edit ? edit->text() : QString());
+            if (edit) {
+                QString text = edit->text();
+                args.append(text);
+                std::cout << "Parameter " << p << " (string): " << text.toStdString() << std::endl;
+            } else {
+                args.append(QString());
+            }
         }
     }
 
     QString methodName = QString::fromUtf8(method.name());
     
-    resultLabel->setText("<i style='color: #6c757d;'>Calling remote method...</i>");
+    resultLabel->setText("<i style='color: #888;'>Calling remote method...</i>");
     QCoreApplication::processEvents();
 
     std::cout << "Invoking remote method: " << m_currentModuleName.toStdString() 
@@ -329,7 +433,8 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
     
     LogosAPIClient* client = m_logosAPI->getClient(m_currentModuleName);
     if (!client) {
-        resultLabel->setText("<span style='color: #dc3545;'><b>Error:</b> Failed to get API client</span>");
+        resultLabel->setText("<span style='color: #ff6b6b;'><b>Error:</b> Failed to get API client</span>");
+        resultLabel->update();
         return;
     }
 
@@ -343,7 +448,7 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
     normalizedReturn = normalizedReturn.trimmed();
 
     if (normalizedReturn.isEmpty() || normalizedReturn == "void") {
-        resultLabel->setText("<span style='color: #27ae60;'>Method called successfully (void return)</span>");
+        resultLabel->setText("<span style='color: #5a9;'>Method called successfully (void return)</span>");
     } else {
         QString resultText = result.toString();
         if (resultText.isEmpty() && result.canConvert<QStringList>()) {
@@ -355,7 +460,15 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
         if (resultText.isEmpty()) {
             resultText = "(empty or null result)";
         }
-        resultLabel->setText(QString("<span style='color: #27ae60;'><b>Result:</b></span> %1").arg(resultText.toHtmlEscaped()));
+        std::cout << "Result: " << resultText.toStdString() << std::endl;
+        QString resultHtml = QString("<span style='color: #5a9;'><b>Result:</b></span> <span style='color: #e0e0e0;'>%1</span>").arg(resultText.toHtmlEscaped());
+        resultLabel->setText(resultHtml);
+        std::cout << "Set resultLabel text to: " << resultHtml.toStdString() << std::endl;
+        std::cout << "resultLabel isVisible: " << resultLabel->isVisible() << ", isEnabled: " << resultLabel->isEnabled() << std::endl;
+        resultLabel->show();
+        resultLabel->update();
+        resultLabel->repaint();
+        QCoreApplication::processEvents();
     }
 }
 
@@ -373,16 +486,16 @@ void MainWindow::loadModule(const QString& path)
 
     QFileInfo fileInfo(path);
     if (!fileInfo.exists()) {
-        m_headerLabel->setText("<b>Error:</b> Module file not found<br><span style='color: #868e96;'>" + path + "</span>");
+        m_headerLabel->setText("<b style='color: #ff6b6b;'>Error:</b> Module file not found<br><span style='color: #888;'>" + path + "</span>");
         m_headerLabel->setStyleSheet(
             "QLabel {"
             "  font-family: -apple-system, 'Segoe UI', sans-serif;"
             "  font-size: 14px;"
-            "  color: #721c24;"
+            "  color: #ff6b6b;"
             "  padding: 16px;"
-            "  background-color: #fff5f5;"
-            "  border: 1px solid #f5c6cb;"
-            "  border-left: 4px solid #dc3545;"
+            "  background-color: #3a2525;"
+            "  border: 1px solid #5a3535;"
+            "  border-left: 4px solid #ff6b6b;"
             "  border-radius: 8px;"
             "}"
         );
@@ -433,16 +546,16 @@ void MainWindow::loadModule(const QString& path)
     m_pluginInstance = m_pluginLoader->instance();
 
     if (!m_pluginInstance) {
-        m_headerLabel->setText("<b>Error:</b> Failed to load module<br><span style='color: #868e96;'>" + m_pluginLoader->errorString() + "</span>");
+        m_headerLabel->setText("<b style='color: #ff6b6b;'>Error:</b> Failed to load module<br><span style='color: #888;'>" + m_pluginLoader->errorString() + "</span>");
         m_headerLabel->setStyleSheet(
             "QLabel {"
             "  font-family: -apple-system, 'Segoe UI', sans-serif;"
             "  font-size: 14px;"
-            "  color: #721c24;"
+            "  color: #ff6b6b;"
             "  padding: 16px;"
-            "  background-color: #fff5f5;"
-            "  border: 1px solid #f5c6cb;"
-            "  border-left: 4px solid #dc3545;"
+            "  background-color: #3a2525;"
+            "  border: 1px solid #5a3535;"
+            "  border-left: 4px solid #ff6b6b;"
             "  border-radius: 8px;"
             "}"
         );
@@ -461,21 +574,22 @@ void MainWindow::loadModule(const QString& path)
         moduleName = fileInfo.baseName();
     }
 
-    QString headerText = QString("<b style='font-size: 16px; color: #1a1a2e;'>%1</b>").arg(moduleName);
+    QString headerText = QString("<b style='font-size: 16px; color: #e0e0e0;'>%1</b>").arg(moduleName);
     if (!moduleVersion.isEmpty()) {
-        headerText += QString(" <span style='color: #6c757d; font-size: 13px;'>v%1</span>").arg(moduleVersion);
+        headerText += QString(" <span style='color: #888; font-size: 13px;'>v%1</span>").arg(moduleVersion);
     }
-    headerText += QString("<br><span style='color: #868e96; font-size: 12px;'>%1</span>").arg(resolvedPath);
-    headerText += QString("<br><span style='color: #3498db; font-size: 11px;'>Remote module: %1</span>").arg(m_currentModuleName);
+    headerText += QString("<br><span style='color: #888; font-size: 12px;'>%1</span>").arg(resolvedPath);
+    headerText += QString("<br><span style='color: #5a9; font-size: 11px;'>Remote module: %1</span>").arg(m_currentModuleName);
     m_headerLabel->setText(headerText);
     m_headerLabel->setStyleSheet(
         "QLabel {"
         "  font-family: -apple-system, 'Segoe UI', sans-serif;"
         "  padding: 16px;"
-        "  background-color: #ffffff;"
-        "  border: 1px solid #dee2e6;"
-        "  border-left: 4px solid #27ae60;"
+        "  background-color: #2d2d2d;"
+        "  border: 1px solid #3d3d3d;"
+        "  border-left: 4px solid #5a9;"
         "  border-radius: 8px;"
+        "  color: #e0e0e0;"
         "}"
     );
 
@@ -538,13 +652,13 @@ void MainWindow::loadModule(const QString& path)
         QColor typeColor;
         switch (method.methodType()) {
             case QMetaMethod::Slot:
-                typeColor = QColor("#3498db");
+                typeColor = QColor("#6bb");
                 break;
             case QMetaMethod::Method:
-                typeColor = QColor("#27ae60");
+                typeColor = QColor("#5a9");
                 break;
             default:
-                typeColor = QColor("#95a5a6");
+                typeColor = QColor("#888");
                 break;
         }
         item->setForeground(1, typeColor);
@@ -566,3 +680,4 @@ void MainWindow::loadModule(const QString& path)
     m_methodsTree->expandAll();
     setWindowTitle(QString("Logos Module Viewer - %1").arg(moduleName));
 }
+
