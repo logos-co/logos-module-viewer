@@ -758,6 +758,7 @@ void MainWindow::loadModule(const QString& path)
     );
 
     const QMetaObject* metaObject = m_pluginInstance->metaObject();
+    QTreeWidgetItem* initLogosItem = nullptr;
     for (int i = 0; i < metaObject->methodCount(); ++i) {
         QMetaMethod method = metaObject->method(i);
 
@@ -834,14 +835,23 @@ void MainWindow::loadModule(const QString& path)
         m_methodsTree->addTopLevelItem(item);
         m_itemToMethodIndex[item] = i;
 
-        QTreeWidgetItem* formItem = new QTreeWidgetItem(item);
-        formItem->setFirstColumnSpanned(true);
-        
-        QWidget* formWidget = createMethodForm(method, i);
-        m_methodsTree->setItemWidget(formItem, 0, formWidget);
+        QString methodName = QString::fromUtf8(method.name());
+        if (methodName != "initLogos") {
+            QTreeWidgetItem* formItem = new QTreeWidgetItem(item);
+            formItem->setFirstColumnSpanned(true);
+            
+            QWidget* formWidget = createMethodForm(method, i);
+            m_methodsTree->setItemWidget(formItem, 0, formWidget);
+        } else {
+            item->setChildIndicatorPolicy(QTreeWidgetItem::DontShowIndicator);
+            initLogosItem = item;
+        }
     }
 
     m_methodsTree->expandAll();
+    if (initLogosItem) {
+        initLogosItem->setExpanded(false);
+    }
     setWindowTitle(QString("Logos Module Viewer - %1").arg(moduleName));
 }
 
