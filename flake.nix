@@ -6,7 +6,7 @@
     logos-liblogos.url = "github:logos-co/logos-liblogos";
     logos-cpp-sdk.url = "github:logos-co/logos-cpp-sdk";
     logos-capability-module.url = "github:logos-co/logos-capability-module";
-    logos-package-manager.url = "github:logos-co/logos-package-manager";
+    logos-package-manager.url = "github:logos-co/logos-package-manager-module";
   };
 
   outputs = { self, nixpkgs, logos-liblogos, logos-cpp-sdk, logos-capability-module, logos-package-manager }:
