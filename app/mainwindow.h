@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QString>
+#include <QList>
 #include <QMap>
 #include <QVariant>
 
@@ -11,10 +12,17 @@ class QTreeWidgetItem;
 class QLabel;
 class QPluginLoader;
 class QWidget;
-class QMetaMethod;
 class LogosAPI;
+class LogosObject;
 class QLineEdit;
 class QTextEdit;
+
+struct MethodDescriptor {
+    QString name;
+    QString returnType;
+    struct Param { QString type; QString name; };
+    QList<Param> parameters;
+};
 
 class MainWindow : public QMainWindow
 {
@@ -32,8 +40,8 @@ private slots:
 
 private:
     void setupUi();
-    QWidget* createMethodForm(const QMetaMethod& method, int methodIndex);
-    void invokeMethod(int methodIndex, QWidget* formWidget);
+    QWidget* createMethodForm(const MethodDescriptor& descriptor);
+    void invokeMethod(const MethodDescriptor& descriptor, QWidget* formWidget);
     void appendEventToLog(const QString& eventName, const QVariantList& data);
 
     QString m_modulePath;
@@ -42,12 +50,12 @@ private:
     QTreeWidget* m_methodsTree;
     QPluginLoader* m_pluginLoader;
     QObject* m_pluginInstance;
-    QMap<QTreeWidgetItem*, int> m_itemToMethodIndex;
+    QMap<QTreeWidgetItem*, MethodDescriptor> m_itemToMethod;
     bool m_coreInitialized;
     LogosAPI* m_logosAPI;
     QLineEdit* m_eventNameInput;
     QTextEdit* m_eventLog;
-    QMap<QString, QObject*> m_eventSubscriptions;
+    QMap<QString, LogosObject*> m_eventSubscriptions;
 };
 
 #endif // MAINWINDOW_H

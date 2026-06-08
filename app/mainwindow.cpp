@@ -7,12 +7,12 @@
 #include <QTreeWidget>
 #include <QHeaderView>
 #include <QPluginLoader>
-#include <QMetaObject>
 #include <QMetaMethod>
 #include <QFileInfo>
 #include <QDir>
 #include <QCoreApplication>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QFont>
 #include <QStringList>
 #include <QLineEdit>
@@ -24,20 +24,20 @@
 #include <QTextEdit>
 #include <QTextCursor>
 #include <QJsonDocument>
-#include <QJsonArray>
 #include <QDateTime>
 #include <QSplitter>
 #include <iostream>
 
 #include "logos_api.h"
 #include "logos_api_client.h"
+#include "logos_provider_object.h"
 
 extern "C" {
-    void logos_core_set_plugins_dir(const char* plugins_dir);
+    void logos_core_add_modules_dir(const char* modules_dir);
     void logos_core_start();
     void logos_core_cleanup();
-    char* logos_core_process_plugin(const char* plugin_path);
-    int logos_core_load_plugin(const char* plugin_name);
+    char* logos_core_process_module(const char* module_path);
+    int logos_core_load_module(const char* module_name, bool with_dependencies);
 }
 
 MainWindow::MainWindow(const QString& modulePath, QWidget *parent)
@@ -230,12 +230,12 @@ void MainWindow::setupUi()
     setCentralWidget(centralWidget);
 }
 
-QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex)
+QWidget* MainWindow::createMethodForm(const MethodDescriptor& descriptor)
 {
     QWidget* formContainer = new QWidget();
     formContainer->setObjectName("methodFormContainer");
     formContainer->setStyleSheet("background-color: #2a2a2a; border-radius: 4px;");
-    
+
     QVBoxLayout* mainLayout = new QVBoxLayout(formContainer);
     mainLayout->setContentsMargins(12, 12, 12, 12);
     mainLayout->setSpacing(8);
@@ -244,22 +244,18 @@ QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex
     formLayout->setSpacing(8);
     formLayout->setLabelAlignment(Qt::AlignRight);
 
-    QByteArrayList paramNames = method.parameterNames();
-    for (int p = 0; p < method.parameterCount(); ++p) {
-        QString paramType = QString::fromUtf8(method.parameterTypeName(p));
-        QString paramName;
-        if (p < paramNames.size() && !paramNames.at(p).isEmpty()) {
-            paramName = QString::fromUtf8(paramNames.at(p));
-        } else {
-            paramName = QString("param%1").arg(p);
-        }
+    for (int p = 0; p < descriptor.parameters.size(); ++p) {
+        const MethodDescriptor::Param& param = descriptor.parameters[p];
+        QString paramType = param.type;
+        QString paramName = param.name;
 
-        QWidget* inputWidget = nullptr;
         QString normalizedType = paramType;
         normalizedType.remove("const ");
         normalizedType.remove("&");
         normalizedType.remove("*");
         normalizedType = normalizedType.trimmed();
+
+        QWidget* inputWidget = nullptr;
 
         if (normalizedType == "int") {
             QSpinBox* spin = new QSpinBox();
@@ -322,7 +318,7 @@ QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex
         formLayout->addRow(label, inputWidget);
     }
 
-    if (method.parameterCount() == 0) {
+    if (descriptor.parameters.isEmpty()) {
         QLabel* noParams = new QLabel("<i style='color: #888;'>No parameters</i>");
         noParams->setStyleSheet("color: #888;");
         formLayout->addRow(noParams);
@@ -335,7 +331,7 @@ QWidget* MainWindow::createMethodForm(const QMetaMethod& method, int methodIndex
 
     QPushButton* callButton = new QPushButton("Call Method");
     callButton->setObjectName("callButton");
-    callButton->setProperty("methodIndex", methodIndex);
+    callButton->setProperty("methodName", descriptor.name);
     callButton->setStyleSheet(
         "QPushButton {"
         "  background-color: #5a9;"
@@ -399,54 +395,43 @@ void MainWindow::onCallMethod()
     QPushButton* button = qobject_cast<QPushButton*>(sender());
     if (!button) return;
 
-    int methodIndex = button->property("methodIndex").toInt();
-    
-    // Find the form container by traversing up the widget hierarchy
+    QString methodName = button->property("methodName").toString();
+
     QWidget* formWidget = button->parentWidget();
     while (formWidget && formWidget->objectName() != "methodFormContainer") {
         formWidget = formWidget->parentWidget();
     }
-    
+
     if (!formWidget) {
         std::cout << "Error: Could not find form container widget" << std::endl;
         return;
     }
-    
-    invokeMethod(methodIndex, formWidget);
+
+    for (auto it = m_itemToMethod.cbegin(); it != m_itemToMethod.cend(); ++it) {
+        if (it.value().name == methodName) {
+            invokeMethod(it.value(), formWidget);
+            return;
+        }
+    }
 }
 
-void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
+void MainWindow::invokeMethod(const MethodDescriptor& descriptor, QWidget* formWidget)
 {
     if (!m_pluginInstance || !m_logosAPI) {
         QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel", Qt::FindChildrenRecursively);
         if (resultLabel) {
             resultLabel->setText("<span style='color: #ff6b6b;'><b>Error:</b> LogosAPI not initialized</span>");
-            resultLabel->update();
         }
         return;
     }
-
-    const QMetaObject* metaObject = m_pluginInstance->metaObject();
-    QMetaMethod method = metaObject->method(methodIndex);
 
     QLabel* resultLabel = formWidget->findChild<QLabel*>("resultLabel", Qt::FindChildrenRecursively);
-    if (!resultLabel) {
-        std::cout << "Error: Could not find resultLabel widget in formWidget: " << formWidget << std::endl;
-        std::cout << "Form widget objectName: " << formWidget->objectName().toStdString() << std::endl;
-        QList<QLabel*> allLabels = formWidget->findChildren<QLabel*>(Qt::FindChildrenRecursively);
-        std::cout << "Found " << allLabels.size() << " labels in form widget" << std::endl;
-        for (QLabel* label : allLabels) {
-            std::cout << "  Label objectName: " << label->objectName().toStdString() << std::endl;
-        }
-        return;
-    }
-    
-    std::cout << "Found resultLabel: " << resultLabel << ", text: " << resultLabel->text().toStdString() << std::endl;
+    if (!resultLabel) return;
 
     QVariantList args;
-    for (int p = 0; p < method.parameterCount(); ++p) {
-        QString paramType = QString::fromUtf8(method.parameterTypeName(p));
-        QString normalizedType = paramType;
+    for (int p = 0; p < descriptor.parameters.size(); ++p) {
+        const MethodDescriptor::Param& param = descriptor.parameters[p];
+        QString normalizedType = param.type;
         normalizedType.remove("const ");
         normalizedType.remove("&");
         normalizedType.remove("*");
@@ -455,83 +440,36 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
         QString widgetName = QString("param_%1").arg(p);
         QWidget* inputWidget = formWidget->findChild<QWidget*>(widgetName, Qt::FindChildrenRecursively);
 
-        if (!inputWidget) {
-            std::cout << "Warning: Could not find widget " << widgetName.toStdString() << " for parameter " << p << std::endl;
-            QList<QWidget*> allWidgets = formWidget->findChildren<QWidget*>(Qt::FindChildrenRecursively);
-            std::cout << "Available widgets: ";
-            for (QWidget* w : allWidgets) {
-                if (!w->objectName().isEmpty()) {
-                    std::cout << w->objectName().toStdString() << " ";
-                }
-            }
-            std::cout << std::endl;
-        } else {
-            std::cout << "Found widget " << widgetName.toStdString() << ": " << inputWidget << std::endl;
-        }
-
         if (normalizedType == "int") {
             QSpinBox* spin = qobject_cast<QSpinBox*>(inputWidget);
-            if (spin) {
-                args.append(spin->value());
-                std::cout << "Parameter " << p << " (int): " << spin->value() << std::endl;
-            } else {
-                args.append(0);
-            }
+            args.append(spin ? spin->value() : 0);
         } else if (normalizedType == "double") {
             QDoubleSpinBox* spin = qobject_cast<QDoubleSpinBox*>(inputWidget);
-            if (spin) {
-                args.append(spin->value());
-                std::cout << "Parameter " << p << " (double): " << spin->value() << std::endl;
-            } else {
-                args.append(0.0);
-            }
+            args.append(spin ? spin->value() : 0.0);
         } else if (normalizedType == "float") {
             QDoubleSpinBox* spin = qobject_cast<QDoubleSpinBox*>(inputWidget);
-            if (spin) {
-                args.append(static_cast<float>(spin->value()));
-                std::cout << "Parameter " << p << " (float): " << spin->value() << std::endl;
-            } else {
-                args.append(0.0f);
-            }
+            args.append(spin ? static_cast<float>(spin->value()) : 0.0f);
         } else if (normalizedType == "bool") {
             QCheckBox* check = qobject_cast<QCheckBox*>(inputWidget);
-            if (check) {
-                args.append(check->isChecked());
-                std::cout << "Parameter " << p << " (bool): " << (check->isChecked() ? "true" : "false") << std::endl;
-            } else {
-                args.append(false);
-            }
+            args.append(check ? check->isChecked() : false);
         } else {
             QLineEdit* edit = qobject_cast<QLineEdit*>(inputWidget);
-            if (edit) {
-                QString text = edit->text();
-                args.append(text);
-                std::cout << "Parameter " << p << " (string): " << text.toStdString() << std::endl;
-            } else {
-                args.append(QString());
-            }
+            args.append(edit ? edit->text() : QString());
         }
     }
 
-    QString methodName = QString::fromUtf8(method.name());
-    
     resultLabel->setText("<i style='color: #888;'>Calling remote method...</i>");
     QCoreApplication::processEvents();
 
-    std::cout << "Invoking remote method: " << m_currentModuleName.toStdString() 
-              << "." << methodName.toStdString() << " with " << args.size() << " args" << std::endl;
-    
     LogosAPIClient* client = m_logosAPI->getClient(m_currentModuleName);
     if (!client) {
         resultLabel->setText("<span style='color: #ff6b6b;'><b>Error:</b> Failed to get API client</span>");
-        resultLabel->update();
         return;
     }
 
-    QVariant result = client->invokeRemoteMethod(m_currentModuleName, methodName, args);
-    
-    QString returnType = QString::fromUtf8(method.typeName());
-    QString normalizedReturn = returnType;
+    QVariant result = client->invokeRemoteMethod(m_currentModuleName, descriptor.name, args);
+
+    QString normalizedReturn = descriptor.returnType;
     normalizedReturn.remove("const ");
     normalizedReturn.remove("&");
     normalizedReturn.remove("*");
@@ -550,15 +488,10 @@ void MainWindow::invokeMethod(int methodIndex, QWidget* formWidget)
         if (resultText.isEmpty()) {
             resultText = "(empty or null result)";
         }
-        std::cout << "Result: " << resultText.toStdString() << std::endl;
         QString resultHtml = QString("<span style='color: #5a9;'><b>Result:</b></span> <span style='color: #e0e0e0;'>%1</span>").arg(resultText.toHtmlEscaped());
         resultLabel->setText(resultHtml);
-        std::cout << "Set resultLabel text to: " << resultHtml.toStdString() << std::endl;
-        std::cout << "resultLabel isVisible: " << resultLabel->isVisible() << ", isEnabled: " << resultLabel->isEnabled() << std::endl;
         resultLabel->show();
         resultLabel->update();
-        resultLabel->repaint();
-        QCoreApplication::processEvents();
     }
 }
 
@@ -590,13 +523,13 @@ void MainWindow::onSubscribeEvent()
         return;
     }
 
-    QObject* replica = client->requestObject(m_currentModuleName);
+    LogosObject* replica = client->requestObject(m_currentModuleName);
     if (!replica) {
         appendEventToLog("Error", QVariantList() << QString("Failed to get replica object for module: %1").arg(m_currentModuleName));
         return;
     }
 
-    client->onEvent(replica, nullptr, eventName, [this](const QString& name, const QVariantList& data) {
+    client->onEvent(replica, eventName, [this](const QString& name, const QVariantList& data) {
         appendEventToLog(name, data);
     });
 
@@ -614,7 +547,7 @@ void MainWindow::appendEventToLog(const QString& eventName, const QVariantList& 
     QJsonObject eventObj;
     eventObj["event"] = eventName;
     eventObj["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
-    
+
     QJsonArray dataArray;
     for (const QVariant& v : data) {
         dataArray.append(QJsonValue::fromVariant(v));
@@ -625,7 +558,7 @@ void MainWindow::appendEventToLog(const QString& eventName, const QVariantList& 
     QString jsonString = doc.toJson(QJsonDocument::Indented);
 
     m_eventLog->append(jsonString);
-    
+
     QTextCursor cursor = m_eventLog->textCursor();
     cursor.movePosition(QTextCursor::End);
     m_eventLog->setTextCursor(cursor);
@@ -634,7 +567,7 @@ void MainWindow::appendEventToLog(const QString& eventName, const QVariantList& 
 void MainWindow::loadModule(const QString& path)
 {
     m_methodsTree->clear();
-    m_itemToMethodIndex.clear();
+    m_itemToMethod.clear();
 
     m_eventSubscriptions.clear();
     if (m_eventLog) {
@@ -674,7 +607,7 @@ void MainWindow::loadModule(const QString& path)
     if (!m_coreInitialized) {
         QString modulesDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../modules");
         std::cout << "Setting modules directory to: " << modulesDir.toStdString() << std::endl;
-        logos_core_set_plugins_dir(modulesDir.toUtf8().constData());
+        logos_core_add_modules_dir(modulesDir.toUtf8().constData());
         logos_core_start();
         std::cout << "Logos Core started" << std::endl;
         m_coreInitialized = true;
@@ -683,19 +616,19 @@ void MainWindow::loadModule(const QString& path)
         std::cout << "LogosAPI initialized" << std::endl;
     }
 
-    // Extract module name from file name (e.g., "package_manager_plugin.dylib" -> "package_manager")
+    // Extract module name from file name (e.g., "liblogos_blockchain_module_plugin.so" -> "liblogos_blockchain_module")
     QString baseName = fileInfo.baseName();
     if (baseName.endsWith("_plugin")) {
-        baseName.chop(7); // Remove "_plugin" suffix
+        baseName.chop(7);
     }
     m_currentModuleName = baseName;
     std::cout << "Module name: " << m_currentModuleName.toStdString() << std::endl;
 
     std::cout << "Processing plugin: " << resolvedPath.toStdString() << std::endl;
-    char* pluginName = logos_core_process_plugin(resolvedPath.toUtf8().constData());
+    char* pluginName = logos_core_process_module(resolvedPath.toUtf8().constData());
     if (pluginName) {
         std::cout << "Plugin processed, name: " << pluginName << std::endl;
-        bool loaded = logos_core_load_plugin(pluginName);
+        bool loaded = logos_core_load_module(pluginName, false);
         if (loaded) {
             std::cout << "Plugin loaded successfully via Logos Core" << std::endl;
         } else {
@@ -757,101 +690,141 @@ void MainWindow::loadModule(const QString& path)
         "}"
     );
 
-    const QMetaObject* metaObject = m_pluginInstance->metaObject();
-    QTreeWidgetItem* initLogosItem = nullptr;
-    for (int i = 0; i < metaObject->methodCount(); ++i) {
-        QMetaMethod method = metaObject->method(i);
+    // Detect plugin style: new SDK uses LogosProviderPlugin interface, old SDK uses QObject slots directly
+    LogosProviderPlugin* providerPlugin = qobject_cast<LogosProviderPlugin*>(m_pluginInstance);
 
-        if (method.enclosingMetaObject() != metaObject) {
-            continue;
-        }
+    if (providerPlugin) {
+        // New SDK style: enumerate methods via LogosProviderObject::getMethods()
+        LogosProviderObject* providerObj = providerPlugin->createProviderObject();
+        if (providerObj) {
+            QJsonArray methods = providerObj->getMethods();
+            delete providerObj;
 
-        if (method.methodType() == QMetaMethod::Signal) {
-            continue;
-        }
+            for (const QJsonValue& val : methods) {
+                QJsonObject methodObj = val.toObject();
+                if (!methodObj.value("isInvokable").toBool(true)) continue;
 
-        QString methodType;
-        switch (method.methodType()) {
-            case QMetaMethod::Method:
-                methodType = "Method";
-                break;
-            case QMetaMethod::Slot:
-                methodType = "Slot";
-                break;
-            case QMetaMethod::Constructor:
-                methodType = "Constructor";
-                break;
-            default:
-                methodType = "Unknown";
-                break;
-        }
+                MethodDescriptor desc;
+                desc.name = methodObj["name"].toString();
+                if (desc.name.isEmpty() || desc.name == "initLogos") continue;
+                desc.returnType = methodObj["returnType"].toString();
+                if (desc.returnType.isEmpty()) desc.returnType = "void";
 
-        QString returnType = QString::fromUtf8(method.typeName());
-        if (returnType.isEmpty()) {
-            returnType = "void";
-        }
+                QJsonArray params = methodObj["parameters"].toArray();
+                for (const QJsonValue& pval : params) {
+                    QJsonObject pobj = pval.toObject();
+                    MethodDescriptor::Param p;
+                    p.type = pobj["type"].toString();
+                    p.name = pobj["name"].toString();
+                    if (p.name.isEmpty()) p.name = QString("param%1").arg(desc.parameters.size());
+                    desc.parameters.append(p);
+                }
 
-        QStringList paramStrings;
-        QByteArrayList paramNames = method.parameterNames();
-        for (int p = 0; p < method.parameterCount(); ++p) {
-            QString paramType = QString::fromUtf8(method.parameterTypeName(p));
-            QString paramName;
-            if (p < paramNames.size() && !paramNames.at(p).isEmpty()) {
-                paramName = QString::fromUtf8(paramNames.at(p));
-            } else {
-                paramName = QString("param%1").arg(p);
+                QStringList paramStrings;
+                for (const auto& p : desc.parameters)
+                    paramStrings << QString("%1 %2").arg(p.type, p.name);
+                QString paramsDisplay = paramStrings.isEmpty() ? "(none)" : paramStrings.join(", ");
+
+                QTreeWidgetItem* item = new QTreeWidgetItem();
+                item->setText(0, desc.name);
+                item->setText(1, "Method");
+                item->setText(2, desc.returnType);
+                item->setText(3, paramsDisplay);
+                item->setForeground(1, QColor("#5a9"));
+                QFont nameFont = item->font(0);
+                nameFont.setBold(true);
+                item->setFont(0, nameFont);
+
+                m_methodsTree->addTopLevelItem(item);
+                m_itemToMethod[item] = desc;
+
+                QTreeWidgetItem* formItem = new QTreeWidgetItem(item);
+                formItem->setFirstColumnSpanned(true);
+                QWidget* formWidget = createMethodForm(desc);
+                m_methodsTree->setItemWidget(formItem, 0, formWidget);
             }
-            paramStrings << QString("%1 %2").arg(paramType, paramName);
         }
-        QString parameters = paramStrings.join(", ");
-        if (parameters.isEmpty()) {
-            parameters = "(none)";
+    } else {
+        // Old SDK style: enumerate methods via QMetaObject introspection
+        const QMetaObject* metaObject = m_pluginInstance->metaObject();
+        QTreeWidgetItem* initLogosItem = nullptr;
+
+        for (int i = 0; i < metaObject->methodCount(); ++i) {
+            QMetaMethod method = metaObject->method(i);
+
+            if (method.enclosingMetaObject() != metaObject) continue;
+            if (method.methodType() == QMetaMethod::Signal) continue;
+
+            MethodDescriptor desc;
+            desc.name = QString::fromUtf8(method.name());
+            desc.returnType = QString::fromUtf8(method.typeName());
+            if (desc.returnType.isEmpty()) desc.returnType = "void";
+
+            QByteArrayList paramNames = method.parameterNames();
+            for (int p = 0; p < method.parameterCount(); ++p) {
+                MethodDescriptor::Param param;
+                param.type = QString::fromUtf8(method.parameterTypeName(p));
+                if (p < paramNames.size() && !paramNames.at(p).isEmpty())
+                    param.name = QString::fromUtf8(paramNames.at(p));
+                else
+                    param.name = QString("param%1").arg(p);
+                desc.parameters.append(param);
+            }
+
+            QString methodType;
+            switch (method.methodType()) {
+                case QMetaMethod::Method:      methodType = "Method"; break;
+                case QMetaMethod::Slot:        methodType = "Slot"; break;
+                case QMetaMethod::Constructor: methodType = "Constructor"; break;
+                default:                       methodType = "Unknown"; break;
+            }
+
+            QStringList paramStrings;
+            for (const auto& p : desc.parameters)
+                paramStrings << QString("%1 %2").arg(p.type, p.name);
+            QString paramsDisplay = paramStrings.isEmpty() ? "(none)" : paramStrings.join(", ");
+
+            QTreeWidgetItem* item = new QTreeWidgetItem();
+            item->setText(0, desc.name);
+            item->setText(1, methodType);
+            item->setText(2, desc.returnType);
+            item->setText(3, paramsDisplay);
+
+            QColor typeColor;
+            switch (method.methodType()) {
+                case QMetaMethod::Slot:   typeColor = QColor("#6bb"); break;
+                case QMetaMethod::Method: typeColor = QColor("#5a9"); break;
+                default:                  typeColor = QColor("#888"); break;
+            }
+            item->setForeground(1, typeColor);
+
+            QFont nameFont = item->font(0);
+            nameFont.setBold(true);
+            item->setFont(0, nameFont);
+
+            m_methodsTree->addTopLevelItem(item);
+            m_itemToMethod[item] = desc;
+
+            if (desc.name != "initLogos") {
+                QTreeWidgetItem* formItem = new QTreeWidgetItem(item);
+                formItem->setFirstColumnSpanned(true);
+                QWidget* formWidget = createMethodForm(desc);
+                m_methodsTree->setItemWidget(formItem, 0, formWidget);
+            } else {
+                item->setChildIndicatorPolicy(QTreeWidgetItem::DontShowIndicator);
+                initLogosItem = item;
+            }
         }
 
-        QTreeWidgetItem* item = new QTreeWidgetItem();
-        item->setText(0, QString::fromUtf8(method.name()));
-        item->setText(1, methodType);
-        item->setText(2, returnType);
-        item->setText(3, parameters);
-
-        QColor typeColor;
-        switch (method.methodType()) {
-            case QMetaMethod::Slot:
-                typeColor = QColor("#6bb");
-                break;
-            case QMetaMethod::Method:
-                typeColor = QColor("#5a9");
-                break;
-            default:
-                typeColor = QColor("#888");
-                break;
-        }
-        item->setForeground(1, typeColor);
-
-        QFont nameFont = item->font(0);
-        nameFont.setBold(true);
-        item->setFont(0, nameFont);
-
-        m_methodsTree->addTopLevelItem(item);
-        m_itemToMethodIndex[item] = i;
-
-        QString methodName = QString::fromUtf8(method.name());
-        if (methodName != "initLogos") {
-            QTreeWidgetItem* formItem = new QTreeWidgetItem(item);
-            formItem->setFirstColumnSpanned(true);
-            
-            QWidget* formWidget = createMethodForm(method, i);
-            m_methodsTree->setItemWidget(formItem, 0, formWidget);
-        } else {
-            item->setChildIndicatorPolicy(QTreeWidgetItem::DontShowIndicator);
-            initLogosItem = item;
+        m_methodsTree->expandAll();
+        if (initLogosItem) {
+            initLogosItem->setExpanded(false);
         }
     }
 
-    m_methodsTree->expandAll();
-    if (initLogosItem) {
-        initLogosItem->setExpanded(false);
+    if (providerPlugin) {
+        m_methodsTree->expandAll();
     }
+
     setWindowTitle(QString("Logos Module Viewer - %1").arg(moduleName));
 }
-
