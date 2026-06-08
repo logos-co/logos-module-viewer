@@ -11,9 +11,11 @@
     pkgs.qt6.wrapQtAppsHook
   ];
   
-  buildInputs = [ 
+  buildInputs = [
     pkgs.qt6.qtbase
     pkgs.qt6.qtremoteobjects
+    pkgs.nlohmann_json
+    pkgs.openssl
   ];
   
   cmakeFlags = [ 

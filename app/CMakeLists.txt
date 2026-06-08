@@ -8,6 +8,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets RemoteObjects)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets RemoteObjects)
+find_package(OpenSSL REQUIRED)
 
 # Find liblogos_core
 if(DEFINED LOGOS_LIBLOGOS_ROOT)
@@ -55,6 +56,8 @@ target_link_libraries(logos-module-viewer PRIVATE
     Qt${QT_VERSION_MAJOR}::RemoteObjects
     ${LOGOS_CORE_LIB}
     ${LOGOS_SDK_LIB}
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 if(APPLE)
