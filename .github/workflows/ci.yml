@@ -1,0 +1,50 @@
+name: CI
+
+# Hermetic build + check for logos-module-viewer. Complements doctests.yml: this
+# builds the app and runs the in-repo `checks.doctest` (a headless self-test that
+# loads the real accounts_module, introspects it, and does a live IPC round-trip)
+# straight from the working tree — no published-commit fetch, so it gives fast
+# feedback even before a branch is pushed/merged.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Build the app
+        run: nix build '.#app' -L
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: logos-co
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Run the doctest check
+        run: nix build '.#checks.x86_64-linux.doctest' -L

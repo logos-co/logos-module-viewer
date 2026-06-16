@@ -4,25 +4,29 @@
 #include <QMainWindow>
 #include <QString>
 #include <QMap>
-#include <QVariant>
+#include <QSet>
+
+#include "viewer_core.h"
 
 class QTreeWidget;
 class QTreeWidgetItem;
 class QLabel;
-class QPluginLoader;
 class QWidget;
-class QMetaMethod;
-class LogosAPI;
 class QLineEdit;
 class QTextEdit;
 
+// MainWindow is the Qt Widgets front-end. It is a thin view over ViewerCore:
+// introspection, module loading, IPC calls and event subscription all live in
+// ViewerCore, so this class only builds and drives the UI.
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    MainWindow(const QString& modulePath = QString(), QWidget *parent = nullptr);
-    ~MainWindow();
+    explicit MainWindow(const QString& modulePath = QString(),
+                        const QString& modulesDir = QString(),
+                        QWidget* parent = nullptr);
+    ~MainWindow() override;
 
     void loadModule(const QString& path);
 
@@ -32,22 +36,19 @@ private slots:
 
 private:
     void setupUi();
-    QWidget* createMethodForm(const QMetaMethod& method, int methodIndex);
-    void invokeMethod(int methodIndex, QWidget* formWidget);
+    QWidget* createMethodForm(const ModuleLib::MethodInfo& method);
+    void invokeMethod(const QString& methodName, QWidget* formWidget);
     void appendEventToLog(const QString& eventName, const QVariantList& data);
+    void showHeaderError(const QString& html);
 
+    ViewerCore* m_core;
     QString m_modulePath;
-    QString m_currentModuleName;
-    QLabel* m_headerLabel;
-    QTreeWidget* m_methodsTree;
-    QPluginLoader* m_pluginLoader;
-    QObject* m_pluginInstance;
-    QMap<QTreeWidgetItem*, int> m_itemToMethodIndex;
-    bool m_coreInitialized;
-    LogosAPI* m_logosAPI;
-    QLineEdit* m_eventNameInput;
-    QTextEdit* m_eventLog;
-    QMap<QString, QObject*> m_eventSubscriptions;
+
+    QLabel* m_headerLabel = nullptr;
+    QTreeWidget* m_methodsTree = nullptr;
+    QLineEdit* m_eventNameInput = nullptr;
+    QTextEdit* m_eventLog = nullptr;
+    QSet<QString> m_eventSubscriptions;
 };
 
 #endif // MAINWINDOW_H

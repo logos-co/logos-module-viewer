@@ -1,88 +1,130 @@
 # logos-module-viewer
 
-A Qt UI application for viewing Logos modules.
+A Qt desktop application for inspecting Logos modules. Point it at a module
+plugin and it lists the module's methods, lets you call them, and lets you
+subscribe to its events — a graphical sibling of the `lm` inspector and the
+`logoscore` runtime CLI.
 
-## Screenshot
+It works with both legacy `Q_INVOKABLE` plugins and modern *universal*/cdylib
+modules (whose methods are exposed through a provider object rather than the Qt
+meta-object), because introspection goes through `ModuleLib::LogosModule`.
 
 ![Module Viewer Screenshot](screenshot.png)
 
 ## Usage
 
+### GUI
+
 ```bash
-./logos-module-viewer --module ./path/to/module.dylib
+logos-module-viewer --module ./path/to/accounts_module_plugin.so
 ```
 
-Note: for now only works with modules that don't need to call another module.
+Loads the module, lists its methods as expandable call forms, and shows an event
+subscription panel. Method calls and event subscriptions are dispatched over the
+Logos IPC bridge to the module running in its own host process.
 
-This will load the specified Qt plugin module and display its methods in the UI.
+### Headless
 
-## How to Build
-
-### Using Nix (Recommended)
-
-#### Build the Application
+The same inspection/calling, non-interactively (handy for scripts and CI):
 
 ```bash
-# Build the app (default)
-nix build
+# List the module's methods (offline — no runtime needed)
+logos-module-viewer --module accounts_module_plugin.so --list-methods
 
-# Or explicitly
+# Call a method over IPC (logoscore-style "method(args)" syntax)
+logos-module-viewer --module accounts_module_plugin.so \
+  --modules-dir ./modules \
+  --call "lengthToEntropyStrength(12)"          # => {"call":"...","result":128}
+
+# Machine-readable output, multiple calls in sequence
+logos-module-viewer --module accounts_module_plugin.so --json \
+  --call "createRandomMnemonic(12)" \
+  --call "lengthToEntropyStrength(24)"
+```
+
+Flags:
+
+| Flag | Description |
+|------|-------------|
+| `-m`, `--module <path>` | Module plugin (`.so`/`.dylib`/`.dll`) to inspect |
+| `--list-methods` | Print the module's methods and exit (headless) |
+| `--call "m(a, b)"` | Call a method over IPC; repeatable (headless) |
+| `--modules-dir <dir>` | Directory liblogos scans for modules + dependencies |
+| `--preload <m1,m2>` | Modules to load before the target (e.g. `capability_module`) |
+| `--json` | Machine-readable JSON output for headless modes |
+
+Argument coercion follows the method signature: `12` → int, `3.14` → double,
+`true`/`false` → bool, otherwise a string; `@file` loads file contents as the
+argument.
+
+## How to build
+
+### Using Nix (recommended)
+
+```bash
+# Build the app (default). Bundles liblogos_core, logos_host, and a modules dir.
 nix build '.#app'
+
+# Run it
+./result/bin/logos-module-viewer --module <plugin.so>
 ```
 
-The result will include:
-- `/bin/logos-module-viewer` - The Module Viewer application
-
-#### Development Shell
+In the workspace, prefer the `ws` CLI (it wires local dependency overrides):
 
 ```bash
-# Enter development shell with all dependencies
-nix develop
+ws build logos-module-viewer
+ws build logos-module-viewer --auto-local   # build against local workspace deps
 ```
 
-**Note:** In zsh, you need to quote the target (e.g., `'.#app'`) to prevent glob expansion.
+> **Note:** the public GitHub `master` of `logos-liblogos` may lag the workspace
+> submodule. Build through the workspace (`ws build` / `--override-input
+> logos-liblogos path:./repos/logos-liblogos`) so the viewer compiles against the
+> current liblogos API.
 
-If you don't have flakes enabled globally, add experimental flags:
+### Development shell
 
 ```bash
-nix build --extra-experimental-features 'nix-command flakes'
+nix develop          # cmake/ninja + Qt + LOGOS_*_ROOT exported
+cmake -S app -B build -GNinja \
+  -DLOGOS_LIBLOGOS_ROOT="$LOGOS_LIBLOGOS_ROOT" \
+  -DLOGOS_MODULE_ROOT="$LOGOS_MODULE_ROOT"
+cmake --build build
+./build/bin/logos-module-viewer --module <plugin.so>
 ```
 
-The compiled artifacts can be found at `result/`
+## Testing
 
-#### Running the Application
-
-After building with `nix build`, you can run it:
+A hermetic headless self-test builds the app, loads the real
+`logos-accounts-module`, and asserts both introspection and a live IPC
+round-trip (`lengthToEntropyStrength(12) == 128`):
 
 ```bash
-# Run the application
-./result/bin/logos-module-viewer
+# Via the workspace (discovers the flake check):
+ws test logos-module-viewer
+
+# Or directly:
+nix build '.#checks.x86_64-linux.doctest' -L
 ```
 
-#### Nix Organization
+There is also a rendered doc-test under `doctests/` (the
+[`logos-doctest`](https://github.com/logos-co/logos-doctest) format) that builds
+this commit's viewer against a real module, exercises the headless modes, and
+**drives the actual GUI window headlessly** — clicking through it and capturing
+screenshots — via the embedded [`logos-qt-mcp`](https://github.com/logos-co/logos-qt-mcp)
+inspector:
 
-The nix build system is organized into modular files in the `/nix` directory:
-- `nix/default.nix` - Common configuration (dependencies, flags, metadata)
-- `nix/app.nix` - Application compilation
-
-## Output Structure
-
-When built with Nix:
-
-```
-result/
-└── bin/
-    └── logos-module-viewer    # Qt application
+```bash
+cd doctests && ./run.sh        # writes outputs/module-viewer-app.md + outputs/images/*.png
 ```
 
-## Requirements
+By default `run.sh` builds your local working tree (no commit/push needed); set
+`REMOTE=1` to build the pinned GitHub commit instead.
 
-### Build Tools
-- CMake (3.16 or later)
-- Ninja build system
-- pkg-config
+## Dependencies
 
-### Dependencies
-- Qt6 (qtbase)
-- Qt6 Widgets (included in qtbase)
-
+- Qt 6 (qtbase/Widgets, qtremoteobjects; qtdeclarative for the inspector)
+- `logos-liblogos` — the C runtime (`liblogos_core`, `logos_host`) and the
+  aggregated `LogosAPI`/`LogosAPIClient` C++ SDK
+- `logos-module` — `ModuleLib::LogosModule` introspection library
+- `logos-qt-mcp` — QObject inspector embedded in the GUI for headless ui_test
+- `nlohmann_json` — header-only (pulled in transitively by the SDK headers)
