@@ -1,2 +1,11 @@
+.DS_Store
 result
 result/
+result-*
+build/
+
+# Doc-test output: generated artifacts are disposable, but keep the rendered .md
+# and the UI screenshots it embeds.
+doctests/outputs/*
+!doctests/outputs/*.md
+!doctests/outputs/images/
