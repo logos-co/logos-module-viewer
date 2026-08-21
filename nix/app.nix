@@ -74,10 +74,39 @@ pkgs.stdenv.mkDerivation rec {
     mkdir -p $out/bin $out/lib $out/modules
     cp build/bin/logos-module-viewer "$out/bin/"
     
-    # Copy liblogos_core library
-    if ls "${logosLiblogos}/lib/"liblogos_core.* >/dev/null 2>&1; then
-      cp -L "${logosLiblogos}/lib/"liblogos_core.* "$out/lib/" || true
-      echo "Copied liblogos_core to $out/lib/"
+    # Copy liblogos_core AND the shared runtime it now imports.
+    #
+    # liblogos_core used to be self-contained: it absorbed liblogos_protocol.a
+    # and liblogos_qt_host.a whole and re-exported them. Since logos-liblogos#182
+    # it IMPORTS those types instead, recording
+    #
+    #     @rpath/liblogos_protocol.dylib
+    #     @rpath/liblogos_qt_host.dylib
+    #
+    # with @loader_path as its only rpath -- so the loader looks for them BESIDE
+    # itself, in this directory, and nowhere else. Copying liblogos_core alone
+    # produces a bundle that builds and installs and cannot be loaded, failing at
+    # dyld time before main() with no diagnostic from the build.
+    #
+    # Copy every shared library liblogos ships rather than naming the two, so
+    # this stays correct if the runtime is split further.
+    _copied=0
+    for f in "${logosLiblogos}/lib/"*.dylib "${logosLiblogos}/lib/"*.so "${logosLiblogos}/lib/"*.dll; do
+      # A non-matching glob stays literal, so test before copying.
+      if [ -f "$f" ]; then
+        cp -L "$f" "$out/lib/" || true
+        _copied=$((_copied + 1))
+      fi
+    done
+    echo "Copied $_copied shared librar(y|ies) from liblogos to $out/lib/"
+
+    # Assert rather than trust the loop: `ls ... || true` copying nothing is
+    # exactly the shape that produced the unloadable bundle above, and it exits
+    # 0 either way.
+    if [ "$_copied" -eq 0 ]; then
+      echo "ERROR: copied no shared libraries from ${logosLiblogos}/lib" >&2
+      ls -la "${logosLiblogos}/lib" >&2 || true
+      exit 1
     fi
     
     # Copy logos_sdk library
