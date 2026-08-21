@@ -33,11 +33,17 @@
 #include "logos_api_client.h"
 
 extern "C" {
-    void logos_core_set_plugins_dir(const char* plugins_dir);
+    // The C API renamed "plugin" to "module". logos_core_set_plugins_dir became
+    // logos_core_add_modules_dir -- note ADD, not SET: it appends a search
+    // directory rather than replacing the list, which is what every current
+    // host wants (an embedded read-only tree plus a user-writable one).
+    void logos_core_add_modules_dir(const char* modules_dir);
     void logos_core_start();
     void logos_core_cleanup();
-    char* logos_core_process_plugin(const char* plugin_path);
-    int logos_core_load_plugin(const char* plugin_name);
+    char* logos_core_process_module(const char* module_path);
+    // load_module takes a second argument the old load_plugin did not: whether
+              // to pull the module's declared dependencies in with it.
+    int logos_core_load_module(const char* module_name, bool with_dependencies);
 }
 
 MainWindow::MainWindow(const QString& modulePath, QWidget *parent)
@@ -590,13 +596,15 @@ void MainWindow::onSubscribeEvent()
         return;
     }
 
-    QObject* replica = client->requestObject(m_currentModuleName);
+    LogosObject* replica = client->requestObject(m_currentModuleName);
     if (!replica) {
         appendEventToLog("Error", QVariantList() << QString("Failed to get replica object for module: %1").arg(m_currentModuleName));
         return;
     }
 
-    client->onEvent(replica, nullptr, eventName, [this](const QString& name, const QVariantList& data) {
+    // onEvent takes THREE arguments now; the old signature had a second
+    // placeholder that this call passed as nullptr.
+    client->onEvent(replica, eventName, [this](const QString& name, const QVariantList& data) {
         appendEventToLog(name, data);
     });
 
@@ -674,7 +682,7 @@ void MainWindow::loadModule(const QString& path)
     if (!m_coreInitialized) {
         QString modulesDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../modules");
         std::cout << "Setting modules directory to: " << modulesDir.toStdString() << std::endl;
-        logos_core_set_plugins_dir(modulesDir.toUtf8().constData());
+        logos_core_add_modules_dir(modulesDir.toUtf8().constData());
         logos_core_start();
         std::cout << "Logos Core started" << std::endl;
         m_coreInitialized = true;
@@ -692,10 +700,12 @@ void MainWindow::loadModule(const QString& path)
     std::cout << "Module name: " << m_currentModuleName.toStdString() << std::endl;
 
     std::cout << "Processing plugin: " << resolvedPath.toStdString() << std::endl;
-    char* pluginName = logos_core_process_plugin(resolvedPath.toUtf8().constData());
+    char* pluginName = logos_core_process_module(resolvedPath.toUtf8().constData());
     if (pluginName) {
         std::cout << "Plugin processed, name: " << pluginName << std::endl;
-        bool loaded = logos_core_load_plugin(pluginName);
+        // true: this viewer loads a module to inspect it, so its dependencies
+        // have to come up with it or the module will not start.
+        bool loaded = logos_core_load_module(pluginName, true);
         if (loaded) {
             std::cout << "Plugin loaded successfully via Logos Core" << std::endl;
         } else {
