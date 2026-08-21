@@ -13,6 +13,9 @@ class QPluginLoader;
 class QWidget;
 class QMetaMethod;
 class LogosAPI;
+// LogosAPIClient::requestObject returns LogosObject*, not QObject*. It is a
+// plain class (logos_object.h), NOT a QObject, so it cannot be stored as one.
+class LogosObject;
 class QLineEdit;
 class QTextEdit;
 
@@ -47,7 +50,10 @@ private:
     LogosAPI* m_logosAPI;
     QLineEdit* m_eventNameInput;
     QTextEdit* m_eventLog;
-    QMap<QString, QObject*> m_eventSubscriptions;
+    // Holds the handle only: this map is used for contains() / assignment /
+    // clear() and never dereferences the pointer, which is why retyping it from
+    // QObject* is a type change and not a behaviour change.
+    QMap<QString, LogosObject*> m_eventSubscriptions;
 };
 
 #endif // MAINWINDOW_H
