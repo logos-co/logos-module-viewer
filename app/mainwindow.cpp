@@ -31,20 +31,7 @@
 
 #include "logos_api.h"
 #include "logos_api_client.h"
-
-extern "C" {
-    // The C API renamed "plugin" to "module". logos_core_set_plugins_dir became
-    // logos_core_add_modules_dir -- note ADD, not SET: it appends a search
-    // directory rather than replacing the list, which is what every current
-    // host wants (an embedded read-only tree plus a user-writable one).
-    void logos_core_add_modules_dir(const char* modules_dir);
-    void logos_core_start();
-    void logos_core_cleanup();
-    char* logos_core_process_module(const char* module_path);
-    // load_module takes a second argument the old load_plugin did not: whether
-              // to pull the module's declared dependencies in with it.
-    int logos_core_load_module(const char* module_name, bool with_dependencies);
-}
+#include "logos_core.h"
 
 MainWindow::MainWindow(const QString& modulePath, QWidget *parent)
     : QMainWindow(parent)
@@ -703,8 +690,11 @@ void MainWindow::loadModule(const QString& path)
     char* pluginName = logos_core_process_module(resolvedPath.toUtf8().constData());
     if (pluginName) {
         std::cout << "Plugin processed, name: " << pluginName << std::endl;
-        // true: this viewer loads a module to inspect it, so its dependencies
-        // have to come up with it or the module will not start.
+        // This viewer loads a module to inspect it, so its dependencies have to
+        // come up with it or the module will not start. Once the liblogos pin
+        // moves past the LogosLoadDeps change, this becomes
+        // LOGOS_LOAD_REQUIRED_DEPS -- and stops compiling until it does, which
+        // is the point of including the header instead of redeclaring it.
         bool loaded = logos_core_load_module(pluginName, true);
         if (loaded) {
             std::cout << "Plugin loaded successfully via Logos Core" << std::endl;
