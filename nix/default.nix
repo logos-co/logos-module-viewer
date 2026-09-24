@@ -1,4 +1,4 @@
-{ pkgs, logosLiblogos }:
+{ pkgs, logosLiblogos, logosProtocolPkg, logosQtHost }:
 
 {
   pname = "logos-module-viewer";
@@ -33,6 +33,8 @@
     # past logos-liblogos#182 -- before that liblogos_core was self-contained
     # and its headers did not reach logos-protocol's.
     pkgs.nlohmann_json
+    logosProtocolPkg
+    logosQtHost
   ];
   
   cmakeFlags = [ 
