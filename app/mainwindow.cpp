@@ -32,6 +32,15 @@
 #include "logos_api.h"
 #include "logos_api_client.h"
 #include "logos_core.h"
+#include "token_manager.h"
+
+namespace {
+// Core keeps its module tokens outside Qt; LogosAPIClient reads TokenManager.
+void mirrorCoreToken(const char* key, const char* token, void*)
+{
+    TokenManager::instance().saveToken(key, token);
+}
+} // namespace
 
 MainWindow::MainWindow(const QString& modulePath, QWidget *parent)
     : QMainWindow(parent)
@@ -62,6 +71,7 @@ MainWindow::~MainWindow()
         delete m_logosAPI;
     }
     if (m_coreInitialized) {
+        logos_core_set_token_listener(nullptr, nullptr);
         logos_core_cleanup();
     }
 }
@@ -670,6 +680,7 @@ void MainWindow::loadModule(const QString& path)
         QString modulesDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../modules");
         std::cout << "Setting modules directory to: " << modulesDir.toStdString() << std::endl;
         logos_core_add_modules_dir(modulesDir.toUtf8().constData());
+        logos_core_set_token_listener(mirrorCoreToken, nullptr);
         logos_core_start();
         std::cout << "Logos Core started" << std::endl;
         m_coreInitialized = true;
@@ -690,12 +701,8 @@ void MainWindow::loadModule(const QString& path)
     char* pluginName = logos_core_process_module(resolvedPath.toUtf8().constData());
     if (pluginName) {
         std::cout << "Plugin processed, name: " << pluginName << std::endl;
-        // This viewer loads a module to inspect it, so its dependencies have to
-        // come up with it or the module will not start. Once the liblogos pin
-        // moves past the LogosLoadDeps change, this becomes
-        // LOGOS_LOAD_REQUIRED_DEPS -- and stops compiling until it does, which
-        // is the point of including the header instead of redeclaring it.
-        bool loaded = logos_core_load_module(pluginName, true);
+        // The module's dependencies come up with it, or it will not start.
+        bool loaded = logos_core_load_module(pluginName, LOGOS_LOAD_REQUIRED_DEPS);
         if (loaded) {
             std::cout << "Plugin loaded successfully via Logos Core" << std::endl;
         } else {
