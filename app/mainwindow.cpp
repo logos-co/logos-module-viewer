@@ -31,14 +31,37 @@
 
 #include "logos_api.h"
 #include "logos_api_client.h"
+#include "logos_consumer.h"
 #include "logos_core.h"
 #include "token_manager.h"
 
 namespace {
+// This app's identity at the runtime, a first-party shell name liblogos reserves.
+constexpr const char* kShellName = "module_viewer";
+
 // Core keeps its module tokens outside Qt; LogosAPIClient reads TokenManager.
+// Only used while capability_module is not the token authority.
 void mirrorCoreToken(const char* key, const char* token, void*)
 {
     TokenManager::instance().saveToken(key, token);
+}
+
+// Loads through core_service as the shell; the C API when there is no binding.
+bool loadWithDependencies(logos_consumer* shell, const char* name)
+{
+    if (!shell) return logos_core_load_module(name, LOGOS_LOAD_REQUIRED_DEPS);
+    const QJsonArray args{QString::fromUtf8(name), QStringLiteral("required")};
+    char* result = nullptr;
+    char* error = nullptr;
+    const int status = logos_consumer_call(shell, "core_service", "loadModule",
+                                           QJsonDocument(args).toJson(QJsonDocument::Compact)
+                                               .constData(),
+                                           120000, &result, &error);
+    const QJsonObject answer = status == 0 && result
+        ? QJsonDocument::fromJson(QByteArray(result)).object() : QJsonObject();
+    logos_consumer_string_free(result);
+    logos_consumer_string_free(error);
+    return answer.value(QStringLiteral("status")).toString() == QStringLiteral("ok");
 }
 } // namespace
 
@@ -71,6 +94,7 @@ MainWindow::~MainWindow()
         delete m_logosAPI;
     }
     if (m_coreInitialized) {
+        if (m_shell) logos_consumer_release(m_shell);
         logos_core_set_token_listener(nullptr, nullptr);
         logos_core_cleanup();
     }
@@ -679,13 +703,26 @@ void MainWindow::loadModule(const QString& path)
     if (!m_coreInitialized) {
         QString modulesDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../modules");
         std::cout << "Setting modules directory to: " << modulesDir.toStdString() << std::endl;
-        logos_core_add_modules_dir(modulesDir.toUtf8().constData());
+        const QByteArray modulesDirUtf8 = modulesDir.toUtf8();
+        logos_core_add_modules_dir(modulesDirUtf8.constData());
+        // The modules beside the binary are this app's own, and it is a shell.
+        const char* bundledDirs[] = {modulesDirUtf8.constData(), nullptr};
+        logos_core_set_bundled_modules_dirs(bundledDirs);
+        logos_core_set_shell_identity(kShellName);
         logos_core_set_token_listener(mirrorCoreToken, nullptr);
         logos_core_start();
         std::cout << "Logos Core started" << std::endl;
         m_coreInitialized = true;
 
-        m_logosAPI = new LogosAPI("module_viewer", this);
+        // As the shell once capability_module is the token authority,
+        // otherwise on the tokens the listener mirrors.
+        m_shell = logos_core_take_shell_binding();
+        if (char* credential = m_shell ? logos_consumer_credential(m_shell) : nullptr) {
+            m_logosAPI = logos::adoptAdmittedConsumer(QString::fromUtf8(kShellName),
+                                                      QString::fromUtf8(credential), this).api;
+            logos_consumer_string_free(credential);
+        }
+        if (!m_logosAPI) m_logosAPI = new LogosAPI(kShellName, this);
         std::cout << "LogosAPI initialized" << std::endl;
     }
 
@@ -702,7 +739,7 @@ void MainWindow::loadModule(const QString& path)
     if (pluginName) {
         std::cout << "Plugin processed, name: " << pluginName << std::endl;
         // The module's dependencies come up with it, or it will not start.
-        bool loaded = logos_core_load_module(pluginName, LOGOS_LOAD_REQUIRED_DEPS);
+        bool loaded = loadWithDependencies(m_shell, pluginName);
         if (loaded) {
             std::cout << "Plugin loaded successfully via Logos Core" << std::endl;
         } else {
