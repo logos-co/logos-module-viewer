@@ -85,10 +85,8 @@ MainWindow::~MainWindow()
     if (m_logosAPI) {
         delete m_logosAPI;
     }
-    if (m_coreInitialized) {
-        if (m_shell) logos_consumer_release(m_shell);
-        logos_core_cleanup();
-    }
+    // Stops the runtime's modules in order; the binding goes with it.
+    logos_runtime_stop(m_runtime);
 }
 
 void MainWindow::setupUi()
@@ -694,33 +692,43 @@ void MainWindow::loadModule(const QString& path)
     if (!m_coreInitialized) {
         QString modulesDir = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../modules");
         std::cout << "Setting modules directory to: " << modulesDir.toStdString() << std::endl;
-        const QByteArray modulesDirUtf8 = modulesDir.toUtf8();
-        logos_core_add_modules_dir(modulesDirUtf8.constData());
-        // The modules beside the binary are this app's own, and it is a shell.
-        const char* bundledDirs[] = {modulesDirUtf8.constData(), nullptr};
-        logos_core_set_bundled_modules_dirs(bundledDirs);
-        logos_core_set_shell_identity(kShellName);
-        logos_core_start();
-        std::cout << "Logos Core started" << std::endl;
         m_coreInitialized = true;
-
-        // The app calls as its shell. Without a binding the runtime has no token
-        // authority (capability_module, bundled beside the app), and nothing loads.
-        m_shell = logos_core_take_shell_binding();
+        // The runtime runs in a process of its own, with the modules beside the
+        // binary as this app's own; the app calls it as its shell.
+        const QByteArray config = QJsonDocument(QJsonObject{
+            {"shell", QString::fromUtf8(kShellName)},
+            {"modules_dirs", QJsonArray{modulesDir}},
+            {"bundled_modules_dirs", QJsonArray{modulesDir}},
+        }).toJson(QJsonDocument::Compact);
+        char* error = nullptr;
+        m_runtime = logos_runtime_spawn(config.constData(), &error);
+        const QString why = QString::fromUtf8(error ? error : "");
+        logos_consumer_string_free(error);
+        m_shell = logos_runtime_binding(m_runtime);
         if (char* credential = m_shell ? logos_consumer_credential(m_shell) : nullptr) {
             m_logosAPI = logos::adoptAdmittedConsumer(QString::fromUtf8(kShellName),
                                                       QString::fromUtf8(credential), this).api;
             logos_consumer_string_free(credential);
         }
         if (!m_logosAPI) {
-            std::cerr << "Logos Core has no token authority: capability_module must be in "
-                      << modulesDir.toStdString() << std::endl;
-            m_headerLabel->setText("<b style='color: #ff6b6b;'>Error:</b> Logos Core has no "
-                                   "token authority<br><span style='color: #888;'>"
-                                   "capability_module must be bundled beside the viewer</span>");
+            // Without its token authority (capability_module, bundled beside the
+            // app) the runtime admits nobody, and nothing loads.
+            std::cerr << "Logos Core did not start: " << why.toStdString() << std::endl;
+            m_headerLabel->setText("<b style='color: #ff6b6b;'>Error:</b> Logos Core did not "
+                                   "start<br><span style='color: #888;'>" + why.toHtmlEscaped()
+                                   + "</span>");
             return;
         }
-        std::cout << "LogosAPI initialized" << std::endl;
+        logos_runtime_on_exit(m_runtime, [](const char* reason, void* self) {
+            const QString text = QString::fromUtf8(reason ? reason : "");
+            QMetaObject::invokeMethod(static_cast<MainWindow*>(self), [self, text]() {
+                std::cerr << "The Logos runtime stopped: " << text.toStdString() << std::endl;
+                static_cast<MainWindow*>(self)->m_headerLabel->setText(
+                    "<b style='color: #ff6b6b;'>Error:</b> The Logos runtime stopped<br>"
+                    "<span style='color: #888;'>" + text.toHtmlEscaped() + "</span>");
+            }, Qt::QueuedConnection);
+        }, this);
+        std::cout << "Logos Core started; LogosAPI initialized" << std::endl;
     }
 
     // Extract module name from file name (e.g., "package_manager_plugin.dylib" -> "package_manager")
@@ -732,7 +740,8 @@ void MainWindow::loadModule(const QString& path)
     std::cout << "Module name: " << m_currentModuleName.toStdString() << std::endl;
 
     std::cout << "Processing plugin: " << resolvedPath.toStdString() << std::endl;
-    char* pluginName = logos_core_process_module(resolvedPath.toUtf8().constData());
+    // Registered with the runtime, which loads it; introspected here as well.
+    char* pluginName = logos_runtime_process_module(m_runtime, resolvedPath.toUtf8().constData());
     if (pluginName) {
         std::cout << "Plugin processed, name: " << pluginName << std::endl;
         // The module's dependencies come up with it, or it will not start.
@@ -742,7 +751,7 @@ void MainWindow::loadModule(const QString& path)
         } else {
             std::cout << "Warning: Failed to load plugin via Logos Core" << std::endl;
         }
-        delete[] pluginName;
+        logos_consumer_string_free(pluginName);
     } else {
         std::cout << "Warning: Failed to process plugin via Logos Core" << std::endl;
     }
