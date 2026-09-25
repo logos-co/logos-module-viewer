@@ -33,23 +33,15 @@
 #include "logos_api_client.h"
 #include "logos_consumer.h"
 #include "logos_core.h"
-#include "token_manager.h"
 
 namespace {
 // This app's identity at the runtime, a first-party shell name liblogos reserves.
 constexpr const char* kShellName = "module_viewer";
 
-// Core keeps its module tokens outside Qt; LogosAPIClient reads TokenManager.
-// Only used while capability_module is not the token authority.
-void mirrorCoreToken(const char* key, const char* token, void*)
-{
-    TokenManager::instance().saveToken(key, token);
-}
-
-// Loads through core_service as the shell; the C API when there is no binding.
+// Loads through core_service as the shell.
 bool loadWithDependencies(logos_consumer* shell, const char* name)
 {
-    if (!shell) return logos_core_load_module(name, LOGOS_LOAD_REQUIRED_DEPS);
+    if (!shell) return false;
     const QJsonArray args{QString::fromUtf8(name), QStringLiteral("required")};
     char* result = nullptr;
     char* error = nullptr;
@@ -95,7 +87,6 @@ MainWindow::~MainWindow()
     }
     if (m_coreInitialized) {
         if (m_shell) logos_consumer_release(m_shell);
-        logos_core_set_token_listener(nullptr, nullptr);
         logos_core_cleanup();
     }
 }
@@ -709,20 +700,26 @@ void MainWindow::loadModule(const QString& path)
         const char* bundledDirs[] = {modulesDirUtf8.constData(), nullptr};
         logos_core_set_bundled_modules_dirs(bundledDirs);
         logos_core_set_shell_identity(kShellName);
-        logos_core_set_token_listener(mirrorCoreToken, nullptr);
         logos_core_start();
         std::cout << "Logos Core started" << std::endl;
         m_coreInitialized = true;
 
-        // As the shell once capability_module is the token authority,
-        // otherwise on the tokens the listener mirrors.
+        // The app calls as its shell. Without a binding the runtime has no token
+        // authority (capability_module, bundled beside the app), and nothing loads.
         m_shell = logos_core_take_shell_binding();
         if (char* credential = m_shell ? logos_consumer_credential(m_shell) : nullptr) {
             m_logosAPI = logos::adoptAdmittedConsumer(QString::fromUtf8(kShellName),
                                                       QString::fromUtf8(credential), this).api;
             logos_consumer_string_free(credential);
         }
-        if (!m_logosAPI) m_logosAPI = new LogosAPI(kShellName, this);
+        if (!m_logosAPI) {
+            std::cerr << "Logos Core has no token authority: capability_module must be in "
+                      << modulesDir.toStdString() << std::endl;
+            m_headerLabel->setText("<b style='color: #ff6b6b;'>Error:</b> Logos Core has no "
+                                   "token authority<br><span style='color: #888;'>"
+                                   "capability_module must be bundled beside the viewer</span>");
+            return;
+        }
         std::cout << "LogosAPI initialized" << std::endl;
     }
 
@@ -745,7 +742,7 @@ void MainWindow::loadModule(const QString& path)
         } else {
             std::cout << "Warning: Failed to load plugin via Logos Core" << std::endl;
         }
-        free(pluginName);
+        delete[] pluginName;
     } else {
         std::cout << "Warning: Failed to process plugin via Logos Core" << std::endl;
     }
