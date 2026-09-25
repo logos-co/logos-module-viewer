@@ -1,4 +1,4 @@
-{ pkgs, common, src, logosLiblogos, logosProtocolPkg, logosQtHost, logosCapabilityModule, logosPackageManager }:
+{ pkgs, common, src, logosLiblogos, logosProtocolPkg, logosQtHost }:
 
 pkgs.stdenv.mkDerivation rec {
   pname = "logos-module-viewer";
@@ -46,8 +46,6 @@ pkgs.stdenv.mkDerivation rec {
     runHook preConfigure
     
     echo "logosLiblogos: ${logosLiblogos}"
-    echo "logosCapabilityModule: ${logosCapabilityModule}"
-    echo "logosPackageManager: ${logosPackageManager}"
     
     cmake -S app -B build \
       -GNinja \
@@ -124,30 +122,17 @@ pkgs.stdenv.mkDerivation rec {
       exit 1
     fi
     
-    # Copy logos_host binary (needed for remote mode)
-    if [ -f "${logosLiblogos}/bin/logos_host" ]; then
-      cp -L "${logosLiblogos}/bin/logos_host" "$out/bin/"
-      echo "Copied logos_host to $out/bin/"
-    fi
-    
-    # Determine platform-specific plugin extension
-    OS_EXT="so"
-    case "$(uname -s)" in
-      Darwin) OS_EXT="dylib";;
-      Linux) OS_EXT="so";;
-      MINGW*|MSYS*|CYGWIN*) OS_EXT="dll";;
-    esac
-    
-    # Copy module plugins into the modules directory
-    if [ -f "${logosCapabilityModule}/lib/capability_module_plugin.$OS_EXT" ]; then
-      cp -L "${logosCapabilityModule}/lib/capability_module_plugin.$OS_EXT" "$out/modules/"
-      echo "Copied capability_module_plugin.$OS_EXT to $out/modules/"
-    fi
-    if [ -f "${logosPackageManager}/lib/package_manager_plugin.$OS_EXT" ]; then
-      cp -L "${logosPackageManager}/lib/package_manager_plugin.$OS_EXT" "$out/modules/"
-      echo "Copied package_manager_plugin.$OS_EXT to $out/modules/"
-    fi
-    
+    # Every module host liblogos ships: a plain module runs in logos_host_plain.
+    for host in "${logosLiblogos}"/bin/logos_host*; do
+      [ -f "$host" ] && cp -L "$host" "$out/bin/"
+    done
+
+    # liblogos' own modules (capability_module, modules_state), installed as the
+    # runtime scans them: capability is the token authority once it runs here.
+    cp -rL "${logosLiblogos}/modules/." "$out/modules/"
+    test -f "$out/modules/capability_module/manifest.json" \
+      || { echo "ERROR: liblogos shipped no capability_module" >&2; exit 1; }
+
     runHook postInstall
   '';
 }
