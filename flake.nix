@@ -3,15 +3,16 @@
 
   inputs = {
     nixpkgs.follows = "logos-liblogos/nixpkgs";
-    # The runtime-control wave: the app is the "module_viewer" shell of a runtime
-    # whose capability_module is the token authority. Back to master as
-    # liblogos#227, protocol#97 and plugin-qt#48 merge.
-    logos-liblogos.url = "github:logos-co/logos-liblogos/feat/embedded-core-service";
+    # The runtime-control wave, legacy mode deleted: the app is the
+    # "module_viewer" shell of a runtime that requires capability_module as its
+    # token authority. Back to master as liblogos#228, protocol#98 and
+    # plugin-qt#49 merge.
+    logos-liblogos.url = "github:logos-co/logos-liblogos/feat/drop-legacy-mode";
     # The Qt host runtime this app links (TokenManager, LogosAPI), which
     # liblogos' Qt-free core does not ship. One protocol and one qt-host in the
     # app: qt-host bakes sizeof(LogosAPIClient) into code the protocol defines.
-    logos-protocol.url = "github:logos-co/logos-protocol/feat/plain-local-inproc";
-    logos-plugin-qt.url = "github:logos-co/logos-plugin-qt/feat/consumer-adoption-only";
+    logos-protocol.url = "github:logos-co/logos-protocol/feat/drop-legacy-mode";
+    logos-plugin-qt.url = "github:logos-co/logos-plugin-qt/feat/drop-legacy-mode";
     logos-plugin-qt.inputs.logos-protocol.follows = "logos-protocol";
     logos-liblogos.inputs.logos-protocol.follows = "logos-protocol";
     logos-liblogos.inputs.logos-plugin-qt.follows = "logos-plugin-qt";
