@@ -742,7 +742,7 @@ void MainWindow::loadModule(const QString& path)
         } else {
             std::cout << "Warning: Failed to load plugin via Logos Core" << std::endl;
         }
-        free(pluginName);
+        delete[] pluginName;
     } else {
         std::cout << "Warning: Failed to process plugin via Logos Core" << std::endl;
     }
