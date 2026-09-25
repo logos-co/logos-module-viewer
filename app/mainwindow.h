@@ -13,6 +13,7 @@ class QPluginLoader;
 class QWidget;
 class QMetaMethod;
 class LogosAPI;
+struct logos_consumer;
 // LogosAPIClient::requestObject returns LogosObject*, not QObject*. It is a
 // plain class (logos_object.h), NOT a QObject, so it cannot be stored as one.
 class LogosObject;
@@ -48,6 +49,7 @@ private:
     QMap<QTreeWidgetItem*, int> m_itemToMethodIndex;
     bool m_coreInitialized;
     LogosAPI* m_logosAPI;
+    logos_consumer* m_shell = nullptr;
     QLineEdit* m_eventNameInput;
     QTextEdit* m_eventLog;
     // Holds the handle only: this map is used for contains() / assignment /
