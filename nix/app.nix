@@ -122,8 +122,9 @@ pkgs.stdenv.mkDerivation rec {
       exit 1
     fi
     
-    # Every module host liblogos ships: a plain module runs in logos_host_plain.
-    for host in "${logosLiblogos}"/bin/logos_host*; do
+    # logos_runtime, which the app spawns, and every module host liblogos ships
+    # (a plain module runs in logos_host_plain).
+    for host in "${logosLiblogos}"/bin/logos_runtime "${logosLiblogos}"/bin/logos_host*; do
       [ -f "$host" ] && cp -L "$host" "$out/bin/"
     done
 

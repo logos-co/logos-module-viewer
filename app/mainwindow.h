@@ -14,6 +14,7 @@ class QWidget;
 class QMetaMethod;
 class LogosAPI;
 struct logos_consumer;
+struct logos_runtime;
 // LogosAPIClient::requestObject returns LogosObject*, not QObject*. It is a
 // plain class (logos_object.h), NOT a QObject, so it cannot be stored as one.
 class LogosObject;
@@ -49,6 +50,8 @@ private:
     QMap<QTreeWidgetItem*, int> m_itemToMethodIndex;
     bool m_coreInitialized;
     LogosAPI* m_logosAPI;
+    // The runtime runs in a process of its own; m_shell is its binding, owned by it.
+    logos_runtime* m_runtime = nullptr;
     logos_consumer* m_shell = nullptr;
     QLineEdit* m_eventNameInput;
     QTextEdit* m_eventLog;

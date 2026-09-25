@@ -7,7 +7,7 @@
     # "module_viewer" shell of a runtime that requires capability_module as its
     # token authority. Back to master as liblogos#228, protocol#98 and
     # plugin-qt#49 merge.
-    logos-liblogos.url = "github:logos-co/logos-liblogos/feat/drop-legacy-mode";
+    logos-liblogos.url = "github:logos-co/logos-liblogos/feat/runtime-process";
     # The Qt host runtime this app links (TokenManager, LogosAPI), which
     # liblogos' Qt-free core does not ship. One protocol and one qt-host in the
     # app: qt-host bakes sizeof(LogosAPIClient) into code the protocol defines.
