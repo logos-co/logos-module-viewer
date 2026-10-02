@@ -691,11 +691,8 @@ void MainWindow::loadModule(const QString& path)
     if (pluginName) {
         std::cout << "Plugin processed, name: " << pluginName << std::endl;
         // This viewer loads a module to inspect it, so its dependencies have to
-        // come up with it or the module will not start. Once the liblogos pin
-        // moves past the LogosLoadDeps change, this becomes
-        // LOGOS_LOAD_REQUIRED_DEPS -- and stops compiling until it does, which
-        // is the point of including the header instead of redeclaring it.
-        bool loaded = logos_core_load_module(pluginName, true);
+        // come up with it or the module will not start.
+        bool loaded = logos_core_load_module(pluginName, LOGOS_LOAD_REQUIRED_DEPS);
         if (loaded) {
             std::cout << "Plugin loaded successfully via Logos Core" << std::endl;
         } else {

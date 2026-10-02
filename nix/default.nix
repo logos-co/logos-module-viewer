@@ -1,4 +1,4 @@
-{ pkgs, logosLiblogos, logosSdk }:
+{ pkgs, logosLiblogos }:
 
 {
   pname = "logos-module-viewer";
@@ -40,7 +40,6 @@
   ];
   
   logosLiblogos = logosLiblogos;
-  logosSdk = logosSdk;
   
   meta = with pkgs.lib; {
     description = "Logos Module Viewer - A Qt UI application for viewing Logos modules";
