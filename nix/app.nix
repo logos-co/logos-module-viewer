@@ -1,4 +1,4 @@
-{ pkgs, common, src, logosLiblogos, logosSdk, logosCapabilityModule, logosPackageManager }:
+{ pkgs, common, src, logosLiblogos, logosCapabilityModule, logosPackageManager }:
 
 pkgs.stdenv.mkDerivation rec {
   pname = "logos-module-viewer";
@@ -46,7 +46,6 @@ pkgs.stdenv.mkDerivation rec {
     runHook preConfigure
     
     echo "logosLiblogos: ${logosLiblogos}"
-    echo "logosSdk: ${logosSdk}"
     echo "logosCapabilityModule: ${logosCapabilityModule}"
     echo "logosPackageManager: ${logosPackageManager}"
     
@@ -54,8 +53,7 @@ pkgs.stdenv.mkDerivation rec {
       -GNinja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-      -DLOGOS_LIBLOGOS_ROOT=${logosLiblogos} \
-      -DLOGOS_CPP_SDK_ROOT=${logosSdk}
+      -DLOGOS_LIBLOGOS_ROOT=${logosLiblogos}
     
     runHook postConfigure
   '';
@@ -107,12 +105,6 @@ pkgs.stdenv.mkDerivation rec {
       echo "ERROR: copied no shared libraries from ${logosLiblogos}/lib" >&2
       ls -la "${logosLiblogos}/lib" >&2 || true
       exit 1
-    fi
-    
-    # Copy logos_sdk library
-    if ls "${logosSdk}/lib/"liblogos_sdk.* >/dev/null 2>&1; then
-      cp -L "${logosSdk}/lib/"liblogos_sdk.* "$out/lib/" || true
-      echo "Copied liblogos_sdk to $out/lib/"
     fi
     
     # Copy logos_host binary (needed for remote mode)
