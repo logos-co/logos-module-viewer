@@ -1,4 +1,4 @@
-{ pkgs, common, src, logosLiblogos, logosCapabilityModule, logosPackageManager }:
+{ pkgs, common, src, logosLiblogos, logosProtocolPkg, logosQtHost, logosCapabilityModule, logosPackageManager }:
 
 pkgs.stdenv.mkDerivation rec {
   pname = "logos-module-viewer";
@@ -53,7 +53,9 @@ pkgs.stdenv.mkDerivation rec {
       -GNinja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-      -DLOGOS_LIBLOGOS_ROOT=${logosLiblogos}
+      -DLOGOS_LIBLOGOS_ROOT=${logosLiblogos} \
+      -DLOGOS_PROTOCOL_ROOT=${logosProtocolPkg} \
+      -DLOGOS_QT_HOST_ROOT=${logosQtHost}
     
     runHook postConfigure
   '';
@@ -104,6 +106,21 @@ pkgs.stdenv.mkDerivation rec {
     if [ "$_copied" -eq 0 ]; then
       echo "ERROR: copied no shared libraries from ${logosLiblogos}/lib" >&2
       ls -la "${logosLiblogos}/lib" >&2 || true
+      exit 1
+    fi
+
+    # The Qt host runtime the app links, from its own inputs: liblogos' Qt-free
+    # core does not ship it. -f replaces a copy the loop above staged read-only.
+    _qtrt=0
+    for f in "${logosProtocolPkg}"/lib/liblogos_protocol.* "${logosQtHost}"/lib/liblogos_qt_host.*; do
+      case "$f" in *.a|*.la) continue ;; esac
+      if [ -f "$f" ]; then
+        cp -Lf "$f" "$out/lib/"
+        _qtrt=$((_qtrt + 1))
+      fi
+    done
+    if [ "$_qtrt" -lt 2 ]; then
+      echo "ERROR: staged $_qtrt of liblogos_protocol / liblogos_qt_host into $out/lib" >&2
       exit 1
     fi
     

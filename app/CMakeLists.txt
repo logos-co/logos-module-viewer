@@ -18,32 +18,22 @@ if(DEFINED LOGOS_LIBLOGOS_ROOT)
     else()
         message(FATAL_ERROR "liblogos_core not found in ${LOGOS_LIBLOGOS_ROOT}/lib")
     endif()
-    # The shared runtime, which liblogos_core no longer DEFINES.
-    #
-    # liblogos_core used to absorb liblogos_protocol.a and liblogos_qt_host.a
-    # whole and re-export them, so linking it alone resolved LogosAPIClient,
-    # TokenManager and LogosAPI. Since logos-liblogos#182 it imports them from
-    # real shared libraries instead, and a consumer that links only
-    # liblogos_core gets an undefined reference at link time:
-    #
-    #   Undefined symbols: LogosAPIClient::onEvent(LogosObject*, QString const&, ...)
-    #
-    # Linking the libraries that own the types is the whole point of that
-    # migration -- it is what makes each of them exist exactly once in the
-    # process. See logos-protocol/cpp/logos_shared_api.h.
-    find_library(LOGOS_PROTOCOL_LIB logos_protocol PATHS ${LOGOS_LIBLOGOS_ROOT}/lib NO_DEFAULT_PATH)
-    find_library(LOGOS_QT_HOST_LIB logos_qt_host PATHS ${LOGOS_LIBLOGOS_ROOT}/lib NO_DEFAULT_PATH)
-    if(NOT LOGOS_PROTOCOL_LIB OR NOT LOGOS_QT_HOST_LIB)
-        message(FATAL_ERROR
-            "liblogos_protocol / liblogos_qt_host not found in ${LOGOS_LIBLOGOS_ROOT}/lib. "
-            "They arrive with logos-liblogos#182; against an older liblogos this "
-            "target would link only liblogos_core and fail on the runtime symbols "
-            "it no longer defines.")
-    endif()
-    message(STATUS "Found shared runtime: ${LOGOS_PROTOCOL_LIB}, ${LOGOS_QT_HOST_LIB}")
 else()
     message(FATAL_ERROR "LOGOS_LIBLOGOS_ROOT not set")
 endif()
+
+# The Qt host runtime (LogosAPI, TokenManager), from its own packages:
+# liblogos' Qt-free core does not ship it. logos_qt_host_shared brings
+# logos_protocol_shared with it.
+foreach(_root LOGOS_PROTOCOL_ROOT LOGOS_QT_HOST_ROOT)
+    if(NOT DEFINED ${_root})
+        message(FATAL_ERROR "${_root} not set")
+    endif()
+endforeach()
+find_package(logos-protocol REQUIRED CONFIG
+    PATHS ${LOGOS_PROTOCOL_ROOT}/lib/cmake/logos-protocol NO_DEFAULT_PATH)
+find_package(logos-qt-host REQUIRED CONFIG
+    PATHS ${LOGOS_QT_HOST_ROOT}/lib/cmake/logos-qt-host NO_DEFAULT_PATH)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
@@ -62,8 +52,7 @@ target_link_libraries(logos-module-viewer PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::RemoteObjects
     ${LOGOS_CORE_LIB}
-    ${LOGOS_QT_HOST_LIB}
-    ${LOGOS_PROTOCOL_LIB}
+    logos-qt-host::logos_qt_host_shared
 )
 
 if(APPLE)
