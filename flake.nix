@@ -6,17 +6,18 @@
     # The runtime-control wave, legacy mode deleted: the app is the
     # "module_viewer" shell of a runtime that requires capability_module as its
     # token authority. Back to master as liblogos#228, protocol#98 and
-    # plugin-qt#49 merge.
-    logos-liblogos.url = "github:logos-co/logos-liblogos/feat/runtime-process";
+    # plugin-qt#49 merge, with method scopes and module configuration on top
+    # (feat/method-scopes, and capability's engine version 2 that it needs).
+    logos-liblogos.url = "github:logos-co/logos-liblogos/feat/method-scopes";
     # The Qt host runtime this app links (TokenManager, LogosAPI), which
     # liblogos' Qt-free core does not ship. One protocol and one qt-host in the
     # app: qt-host bakes sizeof(LogosAPIClient) into code the protocol defines.
-    logos-protocol.url = "github:logos-co/logos-protocol/feat/drop-legacy-mode";
-    logos-plugin-qt.url = "github:logos-co/logos-plugin-qt/feat/drop-legacy-mode";
+    logos-protocol.url = "github:logos-co/logos-protocol/feat/method-scopes";
+    logos-plugin-qt.url = "github:logos-co/logos-plugin-qt/feat/method-scopes";
     logos-plugin-qt.inputs.logos-protocol.follows = "logos-protocol";
     logos-liblogos.inputs.logos-protocol.follows = "logos-protocol";
     logos-liblogos.inputs.logos-plugin-qt.follows = "logos-plugin-qt";
-    logos-capability-module.url = "github:logos-co/logos-capability-module";
+    logos-capability-module.url = "github:logos-co/logos-capability-module/feat/method-scopes";
     logos-package-manager.url = "github:logos-co/logos-package-manager-module";
   };
 
